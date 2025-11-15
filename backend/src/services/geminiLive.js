@@ -62,18 +62,18 @@ RESPONSE STYLE:
           name: 'updateStatus',
           description: 'Report current observations from video and audio. Call this frequently to provide real-time updates.',
           parameters: {
-            type: 'object',
+            type: 'OBJECT',
             properties: {
               visual_observation: {
-                type: 'string',
+                type: 'STRING',
                 description: 'What you currently see in the video (people, hands, gestures)'
               },
               audio_observation: {
-                type: 'string',
+                type: 'STRING',
                 description: 'What you currently hear (conversation, keywords)'
               },
               person_description: {
-                type: 'string',
+                type: 'STRING',
                 description: 'Description of person in frame (if visible)'
               }
             },
@@ -84,22 +84,22 @@ RESPONSE STYLE:
           name: 'confirmVerbalAgreement',
           description: 'Call this when you detect a CLEAR verbal agreement to a payment with a specific amount.',
           parameters: {
-            type: 'object',
+            type: 'OBJECT',
             properties: {
               agreed: {
-                type: 'boolean',
+                type: 'BOOLEAN',
                 description: 'true if agreement is detected, false if retracted'
               },
               amount: {
-                type: 'number',
+                type: 'NUMBER',
                 description: 'Payment amount in USD'
               },
               quote: {
-                type: 'string',
+                type: 'STRING',
                 description: 'Exact quote of the verbal agreement'
               },
               confidence: {
-                type: 'number',
+                type: 'NUMBER',
                 description: 'Confidence level 0-1'
               }
             },
@@ -110,22 +110,22 @@ RESPONSE STYLE:
           name: 'confirmHandshake',
           description: 'Call this when you detect or lose detection of a handshake gesture.',
           parameters: {
-            type: 'object',
+            type: 'OBJECT',
             properties: {
               handshake_active: {
-                type: 'boolean',
+                type: 'BOOLEAN',
                 description: 'true if handshake is currently happening, false if stopped'
               },
               description: {
-                type: 'string',
+                type: 'STRING',
                 description: 'Description of what you see with the hands'
               },
               confidence: {
-                type: 'number',
+                type: 'NUMBER',
                 description: 'Confidence level 0-1'
               },
               stable_duration: {
-                type: 'number',
+                type: 'NUMBER',
                 description: 'How many seconds the handshake has been stable (estimate)'
               }
             },
@@ -136,18 +136,18 @@ RESPONSE STYLE:
           name: 'identifyPerson',
           description: 'Call this when you recognize an enrolled person from the reference photos. Provide their name and wallet address from the enrolled list.',
           parameters: {
-            type: 'object',
+            type: 'OBJECT',
             properties: {
               name: {
-                type: 'string',
+                type: 'STRING',
                 description: 'Name of the identified person (must match an enrolled person)'
               },
               wallet: {
-                type: 'string',
+                type: 'STRING',
                 description: 'Wallet address of the identified person'
               },
               confidence: {
-                type: 'number',
+                type: 'NUMBER',
                 description: 'Confidence level 0-1 for the face match'
               }
             },
@@ -158,26 +158,26 @@ RESPONSE STYLE:
           name: 'executeTransaction',
           description: 'Execute the crypto transaction. ONLY call this when BOTH verbal agreement AND handshake are confirmed simultaneously.',
           parameters: {
-            type: 'object',
+            type: 'OBJECT',
             properties: {
               person_description: {
-                type: 'string',
+                type: 'STRING',
                 description: 'Description of the identified person'
               },
               amount: {
-                type: 'number',
+                type: 'NUMBER',
                 description: 'Payment amount in USD'
               },
               verbal_confirmation_quote: {
-                type: 'string',
+                type: 'STRING',
                 description: 'Quote of the verbal agreement'
               },
               handshake_confirmed: {
-                type: 'boolean',
+                type: 'BOOLEAN',
                 description: 'Handshake is currently active and stable'
               },
               overall_confidence: {
-                type: 'number',
+                type: 'NUMBER',
                 description: 'Overall confidence in all conditions 0-1'
               }
             },
@@ -279,25 +279,62 @@ RESPONSE STYLE:
     }
 
     try {
-      logger.info(`Sending ${enrolledPeople.length} enrolled people to Gemini via realtime input`);
+      logger.info(`Sending ${enrolledPeople.length} enrolled people to Gemini`);
 
-      // For native audio model, send first photo of first person as reference via realtime input
-      // Note: Native audio model doesn't support sendClientContent with multiple images
-      const person = enrolledPeople[0];
-      if (person.photos && person.photos.length > 0) {
-        const base64Data = person.photos[0].replace(/^data:image\/\w+;base64,/, '');
+      // Send introduction text
+      const intro = `ENROLLED PEOPLE FOR IDENTIFICATION:\n\n${enrolledPeople.map(p =>
+        `- ${p.name} (Wallet: ${p.wallet})`
+      ).join('\n')}\n\nI will now show you reference photos. Remember these faces and match them to people you see in the live video stream.`;
 
-        // Send reference photo via realtime input
-        await session.liveSession.sendRealtimeInput({
-          media: {
-            data: base64Data,
-            mimeType: 'image/jpeg'
+      await session.liveSession.sendClientContent({
+        turns: [{
+          role: 'user',
+          parts: [{ text: intro }]
+        }],
+        turnComplete: false
+      });
+
+      // Send photos ONE AT A TIME using sendRealtimeInput (not batched)
+      // This avoids the "invalid argument" error from too many images at once
+      for (const person of enrolledPeople) {
+        if (person.photos && person.photos.length > 0) {
+          logger.info(`Sending photos for ${person.name} one at a time...`);
+
+          // Send only the first 2 photos to reduce API load (can be adjusted)
+          const photosToSend = person.photos.slice(0, 2);
+
+          for (let i = 0; i < photosToSend.length; i++) {
+            const base64Data = photosToSend[i].replace(/^data:image\/\w+;base64,/, '');
+
+            // Send each photo individually via realtime input
+            await session.liveSession.sendRealtimeInput({
+              media: {
+                data: base64Data,
+                mimeType: 'image/jpeg'
+              }
+            });
+
+            // Small delay between photos to avoid overwhelming the API
+            await new Promise(resolve => setTimeout(resolve, 200));
           }
-        });
 
-        logger.info(`Sent reference photo for ${person.name} (${person.wallet})`);
-        session.enrollmentSent = true;
+          logger.info(`Sent ${photosToSend.length} reference photos for ${person.name}`);
+        }
       }
+
+      logger.info(`All enrolled people photos sent to session ${sessionId}`);
+
+      // Send explicit instruction to start analyzing NOW
+      await session.liveSession.sendClientContent({
+        turns: [{
+          role: 'user',
+          parts: [{ text: 'Start monitoring the live video and audio stream NOW. Call updateStatus() immediately with what you observe. Continue monitoring and report all observations in real-time.' }]
+        }],
+        turnComplete: true
+      });
+
+      logger.info('Sent activation prompt to Gemini');
+      session.enrollmentSent = true;
     } catch (error) {
       logger.error(`Error sending enrolled people to session ${sessionId}:`, error);
       throw error;
@@ -430,7 +467,16 @@ RESPONSE STYLE:
     if (!session) return;
 
     try {
-      logger.debug(`Received message for ${sessionId}:`, JSON.stringify(message).substring(0, 200));
+      // Log message type for debugging
+      const messageType = Object.keys(message)[0];
+      if (messageType !== 'serverContent') {
+        logger.info(`📨 Gemini message type: ${messageType} for session ${sessionId.substring(0, 8)}`);
+      }
+
+      // Check for setupComplete
+      if (message.setupComplete) {
+        logger.info(`✅ Setup complete for session ${sessionId.substring(0, 8)}`);
+      }
 
       // Check for function calls (toolCall in new SDK)
       if (message.toolCall && message.toolCall.functionCalls) {
