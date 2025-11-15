@@ -1,4 +1,4 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenAI } = require('@google/genai');
 const logger = require('../utils/logger');
 
 class GeminiLiveService {
@@ -10,7 +10,7 @@ class GeminiLiveService {
       throw new Error('GEMINI_API_KEY is required');
     }
 
-    this.genAI = new GoogleGenerativeAI(this.apiKey);
+    this.genAI = new GoogleGenAI({ apiKey: this.apiKey });
     this.activeSessions = new Map();
 
     // System instruction for transaction monitoring
@@ -40,7 +40,8 @@ PERSON IDENTIFICATION:
    - Do NOT mention unknown people - only report enrolled people you recognize
 
 CRITICAL RULES:
-   - Call updateStatus() frequently with what you observe
+   - Call updateStatus() EVERY TIME you receive a new video frame - provide constant visual commentary
+   - Describe what you see in the video in EVERY update
    - Call confirmVerbalAgreement() ONLY when you hear explicit verbal agreement with amount
    - Call confirmHandshake() ONLY when you see a proper, stable handshake
    - Call executeTransaction() ONLY when BOTH verbal AND handshake are confirmed simultaneously
@@ -49,7 +50,8 @@ CRITICAL RULES:
    - Provide real-time narration of what you see and hear
 
 RESPONSE STYLE:
-   - Brief, real-time updates
+   - Brief, real-time updates EVERY frame
+   - Always describe the visual scene
    - Clear status on each confirmation
    - Confidence scores (0-1) for detections`;
 
@@ -197,22 +199,9 @@ RESPONSE STYLE:
     try {
       logger.info(`Creating Gemini Live session: ${sessionId}`);
 
-      // Create Live API connection (WebSocket-based)
-      const liveSession = await this.genAI.live.connect({
-        model: 'models/gemini-2.5-flash-native-audio-preview-09-2025',
-        systemInstruction: this.systemInstruction,
-        tools: this.tools,
-        generationConfig: {
-          responseModalities: ['TEXT', 'AUDIO'],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } }
-          }
-        }
-      });
-
-      const session = {
+      const sessionData = {
         id: sessionId,
-        liveSession: liveSession,
+        liveSession: null,
         onMessage: onMessage,
         onFunctionCall: onFunctionCall,
         audioBuffer: [],
@@ -231,26 +220,42 @@ RESPONSE STYLE:
         }
       };
 
-      // Set up message handler for incoming responses
-      liveSession.on('message', async (message) => {
-        await this.handleLiveMessage(sessionId, message);
+      // Create Live API connection (WebSocket-based) using new SDK
+      const liveSession = await this.genAI.live.connect({
+        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        config: {
+          systemInstruction: this.systemInstruction,
+          tools: this.tools,
+          responseModalities: ['AUDIO'],  // Native audio model needs AUDIO modality
+          generationConfig: {
+            temperature: 0.3,
+            topP: 0.8,
+            topK: 40
+          }
+        },
+        callbacks: {
+          onopen: () => {
+            logger.info(`Live session ${sessionId} WebSocket opened`);
+          },
+          onmessage: async (message) => {
+            await this.handleLiveMessage(sessionId, message);
+          },
+          onerror: (error) => {
+            logger.error(`Live session ${sessionId} error:`, error);
+          },
+          onclose: (event) => {
+            logger.info(`Live session ${sessionId} closed - Code: ${event?.code}, Reason: ${event?.reason}`);
+            this.activeSessions.delete(sessionId);
+          }
+        }
       });
 
-      // Handle errors
-      liveSession.on('error', (error) => {
-        logger.error(`Live session ${sessionId} error:`, error);
-      });
+      sessionData.liveSession = liveSession;
+      this.activeSessions.set(sessionId, sessionData);
 
-      // Handle close
-      liveSession.on('close', () => {
-        logger.info(`Live session ${sessionId} closed`);
-        this.activeSessions.delete(sessionId);
-      });
-
-      this.activeSessions.set(sessionId, session);
       logger.info(`Session ${sessionId} created successfully`);
 
-      return session;
+      return sessionData;
     } catch (error) {
       logger.error(`Error creating session ${sessionId}:`, error);
       throw error;
@@ -274,38 +279,25 @@ RESPONSE STYLE:
     }
 
     try {
-      logger.info(`Sending ${enrolledPeople.length} enrolled people to Gemini`);
+      logger.info(`Sending ${enrolledPeople.length} enrolled people to Gemini via realtime input`);
 
-      // Build enrollment message with all photos
-      const parts = [];
+      // For native audio model, send first photo of first person as reference via realtime input
+      // Note: Native audio model doesn't support sendClientContent with multiple images
+      const person = enrolledPeople[0];
+      if (person.photos && person.photos.length > 0) {
+        const base64Data = person.photos[0].replace(/^data:image\/\w+;base64,/, '');
 
-      // Add text introduction
-      const intro = `ENROLLED PEOPLE REFERENCE PHOTOS:\n\n${enrolledPeople.map(p =>
-        `- ${p.name} (Wallet: ${p.wallet}) - ${p.photoCount} photos`
-      ).join('\n')}\n\nI will now show you reference photos for each person. Compare these to the live video stream.`;
+        // Send reference photo via realtime input
+        await session.liveSession.sendRealtimeInput({
+          media: {
+            data: base64Data,
+            mimeType: 'image/jpeg'
+          }
+        });
 
-      parts.push({ text: intro });
-
-      // Add all photos with labels
-      for (const person of enrolledPeople) {
-        parts.push({ text: `\n\nReference photos for ${person.name}:` });
-
-        for (let i = 0; i < person.photos.length; i++) {
-          const base64Data = person.photos[i].replace(/^data:image\/\w+;base64,/, '');
-          parts.push({
-            inlineData: {
-              mimeType: 'image/jpeg',
-              data: base64Data
-            }
-          });
-        }
+        logger.info(`Sent reference photo for ${person.name} (${person.wallet})`);
+        session.enrollmentSent = true;
       }
-
-      // Send all enrollment data in one message
-      await session.liveSession.send(parts);
-      session.enrollmentSent = true;
-
-      logger.info(`All enrolled people photos sent to session ${sessionId}`);
     } catch (error) {
       logger.error(`Error sending enrolled people to session ${sessionId}:`, error);
       throw error;
@@ -324,9 +316,9 @@ RESPONSE STYLE:
     }
 
     try {
-      // Throttle to ~1 FPS
+      // Throttle to ~2 FPS (send every 500ms for faster updates)
       const now = Date.now();
-      if (now - session.lastVideoTime < 1000) {
+      if (now - session.lastVideoTime < 500) {
         return; // Skip this frame
       }
       session.lastVideoTime = now;
@@ -335,18 +327,18 @@ RESPONSE STYLE:
       // Remove data URI prefix if present
       const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
 
-      // Send to Gemini Live API
-      await session.liveSession.send([
-        {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: base64Data
-          }
-        },
-        {
-          text: `[Video Frame ${session.videoFrameCount}] Analyze this frame. What do you see? Report status.`
+      // Send using sendRealtimeInput for native audio model (supports video too)
+      await session.liveSession.sendRealtimeInput({
+        media: {
+          data: base64Data,
+          mimeType: 'image/jpeg'
         }
-      ]);
+      });
+
+      // Log every 10th frame
+      if (session.videoFrameCount % 10 === 0) {
+        logger.info(`Sent ${session.videoFrameCount} video frames to Gemini`);
+      }
     } catch (error) {
       logger.error(`Error sending video frame for ${sessionId}:`, error);
       throw error;
@@ -368,15 +360,13 @@ RESPONSE STYLE:
       // Remove data URI prefix if present
       const base64Data = audioData.replace(/^data:audio\/\w+;base64,/, '');
 
-      // Send directly to Live API (it handles audio streaming natively)
-      await session.liveSession.send([
-        {
-          inlineData: {
-            mimeType: 'audio/pcm;rate=16000',
-            data: base64Data
-          }
+      // Send using sendRealtimeInput for native audio model
+      await session.liveSession.sendRealtimeInput({
+        media: {
+          data: base64Data,
+          mimeType: 'audio/pcm;rate=16000'
         }
-      ]);
+      });
     } catch (error) {
       logger.error(`Error sending audio for ${sessionId}:`, error);
       throw error;
@@ -422,7 +412,10 @@ RESPONSE STYLE:
         text: 'Analyze what you see and hear. Update me on the status of: 1) Person identification, 2) Verbal agreement, 3) Handshake. Are both confirmations present?'
       });
 
-      await session.liveSession.send(parts);
+      await session.liveSession.sendClientContent({
+        turns: [{ role: 'user', parts: parts }],
+        turnComplete: true
+      });
     } catch (error) {
       logger.error(`Error sending multimodal chunk for ${sessionId}:`, error);
       throw error;
@@ -437,42 +430,54 @@ RESPONSE STYLE:
     if (!session) return;
 
     try {
-      // Check for function calls
-      if (message.toolCall) {
-        const functionCall = message.toolCall.functionCalls[0];
-        logger.info(`Function call: ${functionCall.name}`, functionCall.args);
+      logger.debug(`Received message for ${sessionId}:`, JSON.stringify(message).substring(0, 200));
 
-        // Update session state based on function calls
-        this.updateSessionState(session, functionCall);
+      // Check for function calls (toolCall in new SDK)
+      if (message.toolCall && message.toolCall.functionCalls) {
+        for (const functionCall of message.toolCall.functionCalls) {
+          logger.info(`Function call: ${functionCall.name}`, functionCall.args);
 
-        // Execute function call handler
-        if (session.onFunctionCall) {
-          const functionResponse = await session.onFunctionCall(functionCall.name, functionCall.args);
+          // Update session state based on function calls
+          this.updateSessionState(session, functionCall);
 
-          // Send function response back to Gemini
-          if (functionResponse) {
-            await session.liveSession.send([{
-              functionResponse: {
-                name: functionCall.name,
-                response: functionResponse
-              }
-            }]);
+          // Execute function call handler
+          if (session.onFunctionCall) {
+            const functionResponse = await session.onFunctionCall(functionCall.name, functionCall.args);
+
+            // Send function response back to Gemini (must include id from the function call)
+            if (functionResponse) {
+              await session.liveSession.sendToolResponse({
+                functionResponses: [{
+                  id: functionCall.id,  // Required: ID from the function call
+                  name: functionCall.name,
+                  response: functionResponse
+                }]
+              });
+            }
           }
         }
       }
 
-      // Check for text response
-      if (message.text && session.onMessage) {
-        session.onMessage(message.text);
+      // Check for text response (serverContent in new SDK)
+      if (message.serverContent && message.serverContent.modelTurn) {
+        const parts = message.serverContent.modelTurn.parts;
+        for (const part of parts) {
+          if (part.text && session.onMessage) {
+            session.onMessage(part.text);
+          }
+        }
       }
 
-      // Check for audio response (if needed later)
-      if (message.inlineData && message.inlineData.mimeType?.startsWith('audio/')) {
-        logger.debug('Received audio response from Gemini');
-        // Could forward audio back to client if needed
+      // Check for audio response
+      if (message.serverContent && message.serverContent.modelTurn) {
+        const parts = message.serverContent.modelTurn.parts;
+        for (const part of parts) {
+          if (part.inlineData && part.inlineData.mimeType?.startsWith('audio/')) {
+            logger.debug('Received audio response from Gemini');
+            // Could forward audio back to client if needed
+          }
+        }
       }
-
-      logger.debug(`Gemini response:`, message);
     } catch (error) {
       logger.error('Error handling Gemini message:', error);
     }
