@@ -4,10 +4,11 @@ const logger = require('../utils/logger');
 
 class GeminiLiveService {
   constructor() {
-    this.apiKey = process.env.GOOGLE_AI_API_KEY || process.env.GEMINI_API_KEY;
+    this.apiKey = process.env.GEMINI_API_KEY;
 
     if (!this.apiKey) {
-      logger.warn('Gemini API key not configured');
+      logger.error('GEMINI_API_KEY not found in .env file');
+      throw new Error('GEMINI_API_KEY is required');
     }
 
     this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -34,9 +35,10 @@ MISSION: Monitor video and audio streams to detect TWO confirmations for crypto 
 PERSON IDENTIFICATION:
    - I will provide you with reference photos of enrolled people
    - Compare the person you see in the live video to these reference photos
-   - When you recognize someone, call identifyPerson() with their name and wallet
-   - If you see an enrolled person, call identifyPerson() once when first detected
-   - If the person is not enrolled or you can't identify them, do NOT call identifyPerson()
+   - ONLY call identifyPerson() when you clearly recognize someone from the reference photos
+   - Call identifyPerson() once when first detected, providing their name and wallet
+   - If you don't see anyone, or the person doesn't match enrolled photos, do NOT call identifyPerson()
+   - Do NOT mention unknown people - only report enrolled people you recognize
 
 CRITICAL RULES:
    - Call updateStatus() frequently with what you observe
@@ -131,20 +133,24 @@ RESPONSE STYLE:
         },
         {
           name: 'identifyPerson',
-          description: 'Provide a detailed description of the person you see for identification purposes.',
+          description: 'Call this when you recognize an enrolled person from the reference photos. Provide their name and wallet address from the enrolled list.',
           parameters: {
             type: 'object',
             properties: {
-              description: {
+              name: {
                 type: 'string',
-                description: 'Detailed description of appearance (hair, face, clothing, glasses, etc.)'
+                description: 'Name of the identified person (must match an enrolled person)'
+              },
+              wallet: {
+                type: 'string',
+                description: 'Wallet address of the identified person'
               },
               confidence: {
                 type: 'number',
-                description: 'Confidence level 0-1'
+                description: 'Confidence level 0-1 for the face match'
               }
             },
-            required: ['description', 'confidence']
+            required: ['name', 'wallet', 'confidence']
           }
         },
         {
@@ -193,7 +199,7 @@ RESPONSE STYLE:
       logger.info(`Creating Gemini Live session: ${sessionId}`);
 
       const model = this.genAI.getGenerativeModel({
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-live-2.5-flash-preview-native-audio-09-2025',
         systemInstruction: this.systemInstruction,
         tools: this.tools
       });

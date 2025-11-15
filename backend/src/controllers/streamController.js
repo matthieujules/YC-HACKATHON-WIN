@@ -202,40 +202,46 @@ class StreamController {
    * Handle person identification
    */
   async handleIdentifyPerson(socket, session, args) {
-    const { description, confidence } = args;
+    const { name, wallet, confidence } = args;
 
-    // Find matching person by description
-    const matchedPerson = await this.findPersonByDescription(
-      session.enrolledPeople,
-      description
+    // Verify person is actually enrolled and fetch full details from database
+    const matchedPerson = session.enrolledPeople.find(p =>
+      p.name === name && p.wallet === wallet
     );
 
     if (matchedPerson) {
       session.currentState.personIdentified = true;
       session.currentState.personData = matchedPerson;
 
+      // Send full person data to frontend (fetched from database)
       socket.emit('person:identified', {
         name: matchedPerson.name,
-        wallet: matchedPerson.wallet_address,
+        wallet: matchedPerson.wallet,
+        photoCount: matchedPerson.photoCount || matchedPerson.photos?.length || 0,
+        enrolledAt: matchedPerson.createdAt,
         confidence: confidence
       });
 
-      logger.info(`Person identified: ${matchedPerson.name}`);
+      logger.info(`Person identified: ${matchedPerson.name} (confidence: ${confidence}, ${matchedPerson.photoCount || 0} photos on file)`);
 
       return {
         identified: true,
         name: matchedPerson.name,
-        wallet: matchedPerson.wallet_address
+        wallet: matchedPerson.wallet,
+        message: `Successfully identified ${name}`
       };
     } else {
+      // Gemini might have hallucinated a name not in our database
+      logger.warn(`Gemini identified "${name}" but not found in enrolled people`);
+
       session.currentState.personIdentified = false;
       session.currentState.personData = null;
 
-      socket.emit('person:unknown', { description });
+      socket.emit('person:unknown', { name, wallet });
 
       return {
         identified: false,
-        message: 'No matching enrolled person found'
+        message: 'Person not found in enrolled database. Please enroll them first.'
       };
     }
   }
