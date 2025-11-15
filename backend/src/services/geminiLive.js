@@ -1,5 +1,4 @@
 const { GoogleGenerativeAI } = require('@google/generative-ai');
-const WebSocket = require('ws');
 const logger = require('../utils/logger');
 
 class GeminiLiveService {
@@ -188,7 +187,7 @@ RESPONSE STYLE:
   }
 
   /**
-   * Create a new Gemini Live session
+   * Create a new Gemini Live session using WebSocket connection
    * @param {string} sessionId - Unique session identifier
    * @param {Function} onMessage - Callback for messages from Gemini
    * @param {Function} onFunctionCall - Callback for function calls
@@ -198,21 +197,28 @@ RESPONSE STYLE:
     try {
       logger.info(`Creating Gemini Live session: ${sessionId}`);
 
-      const model = this.genAI.getGenerativeModel({
-        model: 'gemini-live-2.5-flash-preview-native-audio-09-2025',
+      // Create Live API connection (WebSocket-based)
+      const liveSession = await this.genAI.live.connect({
+        model: 'models/gemini-2.5-flash-native-audio-preview-09-2025',
         systemInstruction: this.systemInstruction,
-        tools: this.tools
+        tools: this.tools,
+        generationConfig: {
+          responseModalities: ['TEXT', 'AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } }
+          }
+        }
       });
 
       const session = {
         id: sessionId,
-        model: model,
-        chat: null,
+        liveSession: liveSession,
         onMessage: onMessage,
         onFunctionCall: onFunctionCall,
         audioBuffer: [],
         videoFrameCount: 0,
         lastVideoTime: 0,
+        enrollmentSent: false,
         state: {
           personIdentified: false,
           personDescription: null,
@@ -225,15 +231,20 @@ RESPONSE STYLE:
         }
       };
 
-      // Start chat session
-      session.chat = model.startChat({
-        generationConfig: {
-          temperature: 0.3, // Lower temperature for more consistent responses
-          topP: 0.8,
-          topK: 40,
-          maxOutputTokens: 2048,
-        },
-        history: []
+      // Set up message handler for incoming responses
+      liveSession.on('message', async (message) => {
+        await this.handleLiveMessage(sessionId, message);
+      });
+
+      // Handle errors
+      liveSession.on('error', (error) => {
+        logger.error(`Live session ${sessionId} error:`, error);
+      });
+
+      // Handle close
+      liveSession.on('close', () => {
+        logger.info(`Live session ${sessionId} closed`);
+        this.activeSessions.delete(sessionId);
       });
 
       this.activeSessions.set(sessionId, session);
@@ -265,34 +276,34 @@ RESPONSE STYLE:
     try {
       logger.info(`Sending ${enrolledPeople.length} enrolled people to Gemini`);
 
-      // Send introduction message
+      // Build enrollment message with all photos
+      const parts = [];
+
+      // Add text introduction
       const intro = `ENROLLED PEOPLE REFERENCE PHOTOS:\n\n${enrolledPeople.map(p =>
         `- ${p.name} (Wallet: ${p.wallet}) - ${p.photoCount} photos`
       ).join('\n')}\n\nI will now show you reference photos for each person. Compare these to the live video stream.`;
 
-      await session.chat.sendMessage(intro);
+      parts.push({ text: intro });
 
-      // Send each person's photos
+      // Add all photos with labels
       for (const person of enrolledPeople) {
-        logger.info(`Sending ${person.photoCount} photos for ${person.name}`);
+        parts.push({ text: `\n\nReference photos for ${person.name}:` });
 
-        // Send person header
-        await session.chat.sendMessage(`Reference photos for ${person.name}:`);
-
-        // Send all photos for this person
         for (let i = 0; i < person.photos.length; i++) {
           const base64Data = person.photos[i].replace(/^data:image\/\w+;base64,/, '');
-
-          await session.chat.sendMessage([
-            {
-              inlineData: {
-                mimeType: 'image/jpeg',
-                data: base64Data
-              }
+          parts.push({
+            inlineData: {
+              mimeType: 'image/jpeg',
+              data: base64Data
             }
-          ]);
+          });
         }
       }
+
+      // Send all enrollment data in one message
+      await session.liveSession.send(parts);
+      session.enrollmentSent = true;
 
       logger.info(`All enrolled people photos sent to session ${sessionId}`);
     } catch (error) {
@@ -324,8 +335,8 @@ RESPONSE STYLE:
       // Remove data URI prefix if present
       const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
 
-      // Send to Gemini with prompt
-      const result = await session.chat.sendMessage([
+      // Send to Gemini Live API
+      await session.liveSession.send([
         {
           inlineData: {
             mimeType: 'image/jpeg',
@@ -336,8 +347,6 @@ RESPONSE STYLE:
           text: `[Video Frame ${session.videoFrameCount}] Analyze this frame. What do you see? Report status.`
         }
       ]);
-
-      await this.handleResponse(sessionId, result);
     } catch (error) {
       logger.error(`Error sending video frame for ${sessionId}:`, error);
       throw error;
@@ -356,31 +365,18 @@ RESPONSE STYLE:
     }
 
     try {
-      // Buffer audio chunks (send every ~2 seconds)
-      session.audioBuffer.push(audioData);
+      // Remove data URI prefix if present
+      const base64Data = audioData.replace(/^data:audio\/\w+;base64,/, '');
 
-      if (session.audioBuffer.length >= 32) { // ~2 seconds at 16kHz
-        const combinedAudio = session.audioBuffer.join('');
-        session.audioBuffer = [];
-
-        // Remove data URI prefix if present
-        const base64Data = combinedAudio.replace(/^data:audio\/\w+;base64,/, '');
-
-        // Send to Gemini
-        const result = await session.chat.sendMessage([
-          {
-            inlineData: {
-              mimeType: 'audio/wav',
-              data: base64Data
-            }
-          },
-          {
-            text: 'Analyze this audio. What do you hear? Any payment discussion or agreement?'
+      // Send directly to Live API (it handles audio streaming natively)
+      await session.liveSession.send([
+        {
+          inlineData: {
+            mimeType: 'audio/pcm;rate=16000',
+            data: base64Data
           }
-        ]);
-
-        await this.handleResponse(sessionId, result);
-      }
+        }
+      ]);
     } catch (error) {
       logger.error(`Error sending audio for ${sessionId}:`, error);
       throw error;
@@ -416,7 +412,7 @@ RESPONSE STYLE:
         const audioBase64 = audioData.replace(/^data:audio\/\w+;base64,/, '');
         parts.push({
           inlineData: {
-            mimeType: 'audio/wav',
+            mimeType: 'audio/pcm;rate=16000',
             data: audioBase64
           }
         });
@@ -426,8 +422,7 @@ RESPONSE STYLE:
         text: 'Analyze what you see and hear. Update me on the status of: 1) Person identification, 2) Verbal agreement, 3) Handshake. Are both confirmations present?'
       });
 
-      const result = await session.chat.sendMessage(parts);
-      await this.handleResponse(sessionId, result);
+      await session.liveSession.send(parts);
     } catch (error) {
       logger.error(`Error sending multimodal chunk for ${sessionId}:`, error);
       throw error;
@@ -435,51 +430,51 @@ RESPONSE STYLE:
   }
 
   /**
-   * Handle response from Gemini (including function calls)
+   * Handle incoming message from Gemini Live API
    */
-  async handleResponse(sessionId, result) {
+  async handleLiveMessage(sessionId, message) {
     const session = this.activeSessions.get(sessionId);
     if (!session) return;
 
     try {
-      const response = result.response;
-
       // Check for function calls
-      const functionCalls = response.functionCalls();
+      if (message.toolCall) {
+        const functionCall = message.toolCall.functionCalls[0];
+        logger.info(`Function call: ${functionCall.name}`, functionCall.args);
 
-      if (functionCalls && functionCalls.length > 0) {
-        for (const call of functionCalls) {
-          logger.info(`Function call: ${call.name}`, call.args);
+        // Update session state based on function calls
+        this.updateSessionState(session, functionCall);
 
-          // Update session state based on function calls
-          this.updateSessionState(session, call);
+        // Execute function call handler
+        if (session.onFunctionCall) {
+          const functionResponse = await session.onFunctionCall(functionCall.name, functionCall.args);
 
-          // Execute function call handler
-          if (session.onFunctionCall) {
-            const functionResponse = await session.onFunctionCall(call.name, call.args);
-
-            // Send function response back to Gemini
-            if (functionResponse) {
-              await session.chat.sendMessage([{
-                functionResponse: {
-                  name: call.name,
-                  response: functionResponse
-                }
-              }]);
-            }
+          // Send function response back to Gemini
+          if (functionResponse) {
+            await session.liveSession.send([{
+              functionResponse: {
+                name: functionCall.name,
+                response: functionResponse
+              }
+            }]);
           }
         }
       }
 
-      // Get text response
-      const text = response.text();
-      if (text && session.onMessage) {
-        session.onMessage(text);
+      // Check for text response
+      if (message.text && session.onMessage) {
+        session.onMessage(message.text);
       }
 
-      logger.debug(`Gemini response: ${text}`);
+      // Check for audio response (if needed later)
+      if (message.inlineData && message.inlineData.mimeType?.startsWith('audio/')) {
+        logger.debug('Received audio response from Gemini');
+        // Could forward audio back to client if needed
+      }
+
+      logger.debug(`Gemini response:`, message);
     } catch (error) {
-      logger.error('Error handling Gemini response:', error);
+      logger.error('Error handling Gemini message:', error);
     }
   }
 
@@ -528,7 +523,11 @@ RESPONSE STYLE:
    * Close session
    */
   closeSession(sessionId) {
-    if (this.activeSessions.has(sessionId)) {
+    const session = this.activeSessions.get(sessionId);
+    if (session) {
+      if (session.liveSession) {
+        session.liveSession.close();
+      }
       this.activeSessions.delete(sessionId);
       logger.info(`Session ${sessionId} closed`);
     }
