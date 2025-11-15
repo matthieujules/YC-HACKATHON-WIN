@@ -565,6 +565,65 @@ footer {
     }
 }
 
+/* Confirmation Overlays */
+.confirmation-overlay {
+    position: absolute;
+    background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+    min-width: 220px;
+}
+
+.verbal-overlay {
+    top: 15px;
+    right: 15px;
+    animation: slideInRight 0.4s ease, pulse 2s ease-in-out infinite;
+}
+
+.handshake-overlay {
+    bottom: 15px;
+    right: 15px;
+    animation: slideInRight 0.4s ease, pulse 2s ease-in-out infinite;
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.confirmation-overlay-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.confirmation-icon-big {
+    font-size: 2rem;
+}
+
+.confirmation-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+}
+
+.confirmation-overlay-content {
+    font-size: 0.9rem;
+    opacity: 0.95;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
 .person-overlay-header {
     display: flex;
     justify-content: space-between;

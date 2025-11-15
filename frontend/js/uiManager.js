@@ -66,46 +66,42 @@ class UIManager {
   }
 
   updateVerbalConfirmation(data) {
-    const item = document.getElementById('verbalConfirmation');
-    const icon = item?.querySelector('.confirmation-icon');
-    const text = document.getElementById('verbalText');
-
-    if (!item) return;
-
     this.verbalConfirmed = data.agreed;
 
+    const overlay = document.getElementById('verbalConfirmationOverlay');
+    const text = document.getElementById('verbalOverlayText');
+
+    if (!overlay) return;
+
     if (data.agreed) {
-      icon.textContent = '✅';
-      item.classList.add('confirmed');
-      text.textContent = 'Agreement detected: $' + data.amount + ' - "' + data.quote + '"';
-      console.log('✅ VERBAL CONFIRMED');
+      // Show overlay with details
+      text.textContent = `$${data.amount} - "${data.quote}"`;
+      overlay.style.display = 'block';
+      console.log('✅ VERBAL CONFIRMED - Overlay shown');
     } else {
-      icon.textContent = '❌';
-      item.classList.remove('confirmed');
-      text.textContent = 'Waiting to hear agreement...';
+      // Hide overlay
+      overlay.style.display = 'none';
     }
 
     this.checkBothConfirmed();
   }
 
   updateHandshakeConfirmation(data) {
-    const item = document.getElementById('handshakeConfirmation');
-    const icon = item?.querySelector('.confirmation-icon');
-    const text = document.getElementById('handshakeText');
-
-    if (!item) return;
-
     this.handshakeConfirmed = data.active;
 
+    const overlay = document.getElementById('handshakeConfirmationOverlay');
+    const text = document.getElementById('handshakeOverlayText');
+
+    if (!overlay) return;
+
     if (data.active) {
-      icon.textContent = '✅';
-      item.classList.add('confirmed');
-      text.textContent = 'Handshake detected! ' + data.description;
-      console.log('✅ HANDSHAKE CONFIRMED');
+      // Show overlay with details
+      text.textContent = data.description || 'Handshake confirmed!';
+      overlay.style.display = 'block';
+      console.log('✅ HANDSHAKE CONFIRMED - Overlay shown');
     } else {
-      icon.textContent = '❌';
-      item.classList.remove('confirmed');
-      text.textContent = 'Waiting for handshake...';
+      // Hide overlay
+      overlay.style.display = 'none';
     }
 
     this.checkBothConfirmed();
@@ -216,21 +212,17 @@ class UIManager {
     this.verbalConfirmed = false;
     this.handshakeConfirmed = false;
 
-    const verbalItem = document.getElementById('verbalConfirmation');
-    const handshakeItem = document.getElementById('handshakeConfirmation');
+    // Hide overlays
+    const verbalOverlay = document.getElementById('verbalConfirmationOverlay');
+    const handshakeOverlay = document.getElementById('handshakeConfirmationOverlay');
 
-    if (verbalItem) {
-      verbalItem.classList.remove('confirmed');
-      verbalItem.querySelector('.confirmation-icon').textContent = '❌';
+    if (verbalOverlay) {
+      verbalOverlay.style.display = 'none';
     }
 
-    if (handshakeItem) {
-      handshakeItem.classList.remove('confirmed');
-      handshakeItem.querySelector('.confirmation-icon').textContent = '❌';
+    if (handshakeOverlay) {
+      handshakeOverlay.style.display = 'none';
     }
-
-    document.getElementById('verbalText').textContent = 'Waiting to hear agreement...';
-    document.getElementById('handshakeText').textContent = 'Waiting for handshake...';
 
     const successPanel = document.getElementById('successPanel');
     if (successPanel) {

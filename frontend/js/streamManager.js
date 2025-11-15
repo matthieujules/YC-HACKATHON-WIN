@@ -12,7 +12,7 @@ class StreamManager {
   async startStream() {
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720, facingMode: 'user' },
+        video: { width: 640, height: 480, facingMode: 'user' }, // Reduced from 1280x720
         audio: {
           sampleRate: 16000,
           channelCount: 1,
@@ -56,13 +56,18 @@ class StreamManager {
   captureFrame() {
     if (!this.videoElement.videoWidth) return null;
 
-    this.canvas.width = this.videoElement.videoWidth;
-    this.canvas.height = this.videoElement.videoHeight;
+    // Further downscale to 320x240 for faster processing
+    const targetWidth = 320;
+    const targetHeight = 240;
+
+    this.canvas.width = targetWidth;
+    this.canvas.height = targetHeight;
 
     const ctx = this.canvas.getContext('2d');
-    ctx.drawImage(this.videoElement, 0, 0);
+    ctx.drawImage(this.videoElement, 0, 0, targetWidth, targetHeight);
 
-    return this.canvas.toDataURL('image/jpeg', 0.8);
+    // Reduced quality from 0.8 to 0.5 for smaller payload
+    return this.canvas.toDataURL('image/jpeg', 0.5);
   }
 
   async startAudioCapture() {

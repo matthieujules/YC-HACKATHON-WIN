@@ -70,7 +70,7 @@
                             <span class="status-dot offline"></span>
                             <span class="status-text">Offline</span>
                         </div>
-                        <!-- Person Identification Overlay -->
+                        <!-- Person Identification Overlay (bottom-left) -->
                         <div id="personOverlay" class="person-overlay" style="display: none;">
                             <div class="person-overlay-header">
                                 <span class="person-name" id="overlayPersonName">Unknown</span>
@@ -78,23 +78,26 @@
                             </div>
                             <div class="person-overlay-wallet" id="overlayPersonWallet">0x...</div>
                         </div>
-                    </div>
 
-                    <!-- BIG Confirmation Checkboxes -->
-                    <div class="confirmations-panel">
-                        <h3>Required Confirmations</h3>
-                        <div class="confirmation-item" id="verbalConfirmation">
-                            <div class="confirmation-icon">❌</div>
-                            <div class="confirmation-info">
-                                <h4>1️⃣ Verbal Agreement</h4>
-                                <p id="verbalText">Waiting to hear agreement...</p>
+                        <!-- Verbal Confirmation Overlay (top-right) -->
+                        <div id="verbalConfirmationOverlay" class="confirmation-overlay verbal-overlay" style="display: none;">
+                            <div class="confirmation-overlay-header">
+                                <span class="confirmation-icon-big">💬</span>
+                                <span class="confirmation-title">Verbal Agreement</span>
+                            </div>
+                            <div class="confirmation-overlay-content">
+                                <p id="verbalOverlayText">Agreement detected</p>
                             </div>
                         </div>
-                        <div class="confirmation-item" id="handshakeConfirmation">
-                            <div class="confirmation-icon">❌</div>
-                            <div class="confirmation-info">
-                                <h4>2️⃣ Handshake Gesture</h4>
-                                <p id="handshakeText">Waiting for handshake...</p>
+
+                        <!-- Handshake Confirmation Overlay (bottom-right) -->
+                        <div id="handshakeConfirmationOverlay" class="confirmation-overlay handshake-overlay" style="display: none;">
+                            <div class="confirmation-overlay-header">
+                                <span class="confirmation-icon-big">🤝</span>
+                                <span class="confirmation-title">Handshake</span>
+                            </div>
+                            <div class="confirmation-overlay-content">
+                                <p id="handshakeOverlayText">Handshake detected</p>
                             </div>
                         </div>
                     </div>
