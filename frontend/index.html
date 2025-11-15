@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ray-Ban Crypto Payments</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Ray-Ban Crypto Payments</h1>
+            <p class="subtitle">Handshake-Activated Transactions</p>
+            <div class="mode-toggle">
+                <button id="modeEnroll" class="mode-btn active">Enroll</button>
+                <button id="modeTransaction" class="mode-btn">Transaction</button>
+            </div>
+        </header>
+
+        <main>
+            <!-- Enrollment Mode -->
+            <div id="enrollmentMode" class="mode-section">
+                <h2>📸 Enroll New Person</h2>
+                <p class="hint">Capture 3-5 photos from different angles</p>
+
+                <div class="enrollment-container">
+                    <div class="enrollment-video-section">
+                        <div class="video-wrapper">
+                            <video id="enrollVideo" autoplay playsinline></video>
+                            <canvas id="enrollCanvas" style="display: none;"></canvas>
+                        </div>
+                        <div class="enrollment-controls">
+                            <button id="startEnrollCamera" class="btn btn-primary">Start Camera</button>
+                            <button id="capturePhoto" class="btn btn-accent" disabled>📷 Capture Photo (<span id="photoCount">0/5</span>)</button>
+                        </div>
+                        <div id="photoPreview" class="photo-preview"></div>
+                    </div>
+
+                    <div class="enrollment-form">
+                        <div class="form-group">
+                            <label for="personName">Name:</label>
+                            <input type="text" id="personName" placeholder="Enter person's name" />
+                        </div>
+                        <div class="form-group">
+                            <label for="walletAddress">Wallet Address:</label>
+                            <input type="text" id="walletAddress" placeholder="0x..." />
+                        </div>
+                        <div class="button-group">
+                            <button id="saveEnrollment" class="btn btn-primary" disabled>💾 Save Person</button>
+                            <button id="resetEnrollment" class="btn btn-secondary">🔄 Reset</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="enrolled-people">
+                    <h3>📋 Enrolled People</h3>
+                    <div id="enrolledList"></div>
+                </div>
+            </div>
+
+            <!-- Transaction Mode -->
+            <div id="transactionMode" class="mode-section" style="display: none;">
+                <h2>🎥 Live Detection</h2>
+
+                <div class="stream-container">
+                    <div class="video-wrapper">
+                        <video id="videoFeed" autoplay playsinline></video>
+                        <canvas id="canvas" style="display: none;"></canvas>
+                        <div id="streamStatus" class="stream-overlay">
+                            <span class="status-dot offline"></span>
+                            <span class="status-text">Offline</span>
+                        </div>
+                    </div>
+
+                    <!-- BIG Confirmation Checkboxes -->
+                    <div class="confirmations-panel">
+                        <h3>Required Confirmations</h3>
+                        <div class="confirmation-item" id="verbalConfirmation">
+                            <div class="confirmation-icon">❌</div>
+                            <div class="confirmation-info">
+                                <h4>1️⃣ Verbal Agreement</h4>
+                                <p id="verbalText">Waiting to hear agreement...</p>
+                            </div>
+                        </div>
+                        <div class="confirmation-item" id="handshakeConfirmation">
+                            <div class="confirmation-icon">❌</div>
+                            <div class="confirmation-info">
+                                <h4>2️⃣ Handshake Gesture</h4>
+                                <p id="handshakeText">Waiting for handshake...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Controls -->
+                <div class="controls">
+                    <button id="startStream" class="btn btn-primary">▶️ Start Streaming</button>
+                    <button id="stopStream" class="btn btn-secondary" style="display: none;">⏹️ Stop Stream</button>
+                </div>
+
+                <!-- Gemini Live Feed -->
+                <div class="gemini-status">
+                    <div class="gemini-header">
+                        <span>✨ Gemini AI Live</span>
+                        <span id="geminiState" class="state-badge">Idle</span>
+                    </div>
+                    <div id="geminiMessage" class="gemini-message">Waiting to start...</div>
+                </div>
+
+                <!-- Person Info (when detected) -->
+                <div id="personInfo" class="person-info-panel" style="display: none;">
+                    <h4>👤 Detected Person</h4>
+                    <p id="detectedPersonName"></p>
+                    <p id="detectedPersonWallet" class="mono"></p>
+                </div>
+
+                <!-- Success Panel -->
+                <div id="successPanel" class="success-panel" style="display: none;">
+                    <div class="success-icon">🎉</div>
+                    <h2>Both Confirmations Met!</h2>
+                    <p>Verbal agreement and handshake detected</p>
+                    <div id="successDetails"></div>
+                </div>
+            </div>
+        </main>
+
+        <footer>
+            <p class="status" id="status">Initializing...</p>
+            <p id="serverStatus" class="server-status">
+                <span class="dot"></span> Checking server...
+            </p>
+        </footer>
+    </div>
+
+    <!-- Socket.io -->
+    <script src="https://cdn.socket.io/4.6.1/socket.io.min.js"></script>
+
+    <!-- App Scripts -->
+    <script src="js/config.js"></script>
+    <script src="js/socketClient.js"></script>
+    <script src="js/streamManager.js"></script>
+    <script src="js/enrollmentManager.js"></script>
+    <script src="js/uiManager.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
