@@ -323,17 +323,6 @@ RESPONSE STYLE:
       }
 
       logger.info(`All enrolled people photos sent to session ${sessionId}`);
-
-      // Send explicit instruction to start analyzing NOW
-      await session.liveSession.sendClientContent({
-        turns: [{
-          role: 'user',
-          parts: [{ text: 'Start monitoring the live video and audio stream NOW. Call updateStatus() immediately with what you observe. Continue monitoring and report all observations in real-time.' }]
-        }],
-        turnComplete: true
-      });
-
-      logger.info('Sent activation prompt to Gemini');
       session.enrollmentSent = true;
     } catch (error) {
       logger.error(`Error sending enrolled people to session ${sessionId}:`, error);
@@ -371,6 +360,18 @@ RESPONSE STYLE:
           mimeType: 'image/jpeg'
         }
       });
+
+      // Send activation prompt AFTER first real video frame arrives
+      if (session.videoFrameCount === 1 && session.enrollmentSent) {
+        logger.info('✨ First video frame received - sending activation prompt');
+        await session.liveSession.sendClientContent({
+          turns: [{
+            role: 'user',
+            parts: [{ text: 'You are now receiving live video and audio. Start analyzing immediately. Call updateStatus() to report what you see and hear. Look for enrolled people and monitor for payment confirmations.' }]
+          }],
+          turnComplete: true
+        });
+      }
 
       // Log every 10th frame
       if (session.videoFrameCount % 10 === 0) {
@@ -488,17 +489,24 @@ RESPONSE STYLE:
 
           // Execute function call handler
           if (session.onFunctionCall) {
-            const functionResponse = await session.onFunctionCall(functionCall.name, functionCall.args);
+            try {
+              const functionResponse = await session.onFunctionCall(functionCall.name, functionCall.args);
 
-            // Send function response back to Gemini (must include id from the function call)
-            if (functionResponse) {
-              await session.liveSession.sendToolResponse({
-                functionResponses: [{
-                  id: functionCall.id,  // Required: ID from the function call
-                  name: functionCall.name,
-                  response: functionResponse
-                }]
-              });
+              // Send function response back to Gemini (must include id from the function call)
+              if (functionResponse && functionCall.id) {
+                logger.debug(`Sending tool response for ${functionCall.name}:`, functionResponse);
+                await session.liveSession.sendToolResponse({
+                  functionResponses: [{
+                    id: functionCall.id,
+                    name: functionCall.name,
+                    response: functionResponse
+                  }]
+                });
+                logger.debug(`Tool response sent successfully for ${functionCall.name}`);
+              }
+            } catch (toolError) {
+              logger.error(`Error sending tool response for ${functionCall.name}:`, toolError);
+              // Don't rethrow - continue processing other messages
             }
           }
         }

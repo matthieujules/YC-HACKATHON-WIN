@@ -3,6 +3,7 @@ class SocketClient {
     this.socket = null;
     this.connected = false;
     this.onGeminiMessage = null;
+    this.onStatusUpdate = null;  // NEW: For real-time status updates
     this.onPersonIdentified = null;
     this.onVerbalConfirmed = null;
     this.onHandshakeConfirmed = null;
@@ -34,6 +35,8 @@ class SocketClient {
 
     this.socket.on('status:update', (data) => {
       console.log('Status update:', data);
+      // Display in UI
+      if (this.onStatusUpdate) this.onStatusUpdate(data);
     });
 
     this.socket.on('person:identified', (data) => {

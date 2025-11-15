@@ -214,12 +214,23 @@ class StreamController {
       session.currentState.personData = matchedPerson;
 
       // Send full person data to frontend (fetched from database)
+      // Include first enrolled photo for display
+      const firstPhoto = matchedPerson.photos && matchedPerson.photos.length > 0
+        ? matchedPerson.photos[0]
+        : null;
+
       socket.emit('person:identified', {
         name: matchedPerson.name,
         wallet: matchedPerson.wallet,
         photoCount: matchedPerson.photoCount || matchedPerson.photos?.length || 0,
         enrolledAt: matchedPerson.createdAt,
-        confidence: confidence
+        confidence: confidence,
+        enrolledPhoto: firstPhoto  // Send first reference photo
+      });
+
+      // Also log to Gemini Live panel
+      socket.emit('gemini:message', {
+        message: `🎯 Person Identified: ${matchedPerson.name} (${(confidence * 100).toFixed(0)}% confidence)`
       });
 
       logger.info(`Person identified: ${matchedPerson.name} (confidence: ${confidence}, ${matchedPerson.photoCount || 0} photos on file)`);
@@ -262,6 +273,13 @@ class StreamController {
       confidence
     });
 
+    // Log to Gemini Live panel
+    socket.emit('gemini:message', {
+      message: agreed
+        ? `💬 Verbal Agreement Detected: "${quote}" - $${amount} (${(confidence * 100).toFixed(0)}% confidence)`
+        : `❌ Verbal agreement retracted`
+    });
+
     logger.info(`Verbal agreement: ${agreed ? 'YES' : 'NO'}, amount: $${amount}`);
 
     // Check if ready for transaction
@@ -286,6 +304,13 @@ class StreamController {
       description,
       confidence,
       duration: stable_duration
+    });
+
+    // Log to Gemini Live panel
+    socket.emit('gemini:message', {
+      message: handshake_active
+        ? `🤝 Handshake Detected: ${description} (${stable_duration || 0}s stable, ${(confidence * 100).toFixed(0)}% confidence)`
+        : `❌ Handshake ended`
     });
 
     logger.info(`Handshake: ${handshake_active ? 'ACTIVE' : 'INACTIVE'}, duration: ${stable_duration}s`);
@@ -354,6 +379,11 @@ class StreamController {
     };
 
     socket.emit('transaction:ready', transactionData);
+
+    // Log to Gemini Live panel
+    socket.emit('gemini:message', {
+      message: `🚀 TRANSACTION READY TO EXECUTE: ${args.person_description} - $${args.amount}`
+    });
 
     logger.info(`Transaction ready for ${session.currentState.personData.name}: $${amount}`);
 

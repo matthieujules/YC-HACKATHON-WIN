@@ -10,6 +10,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     uiManager.updateGeminiState('Active');
   };
 
+  // NEW: Real-time status updates from Gemini's updateStatus() calls
+  socketClient.onStatusUpdate = (data) => {
+    uiManager.updateStatusObservations(data);
+  };
+
   socketClient.onPersonIdentified = (data) => {
     uiManager.showPersonInfo(data);
   };
@@ -59,6 +64,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       uiManager.updateStreamStatus(true);
       uiManager.updateStatus('Streaming to Gemini AI...');
       uiManager.updateGeminiState('Active');
+      uiManager.clearGeminiMessages();  // Clear previous messages
       uiManager.resetConfirmations();
     }
   });
