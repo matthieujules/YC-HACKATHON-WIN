@@ -294,31 +294,32 @@ RESPONSE STYLE:
         turnComplete: false
       });
 
-      // Send photos ONE AT A TIME using sendRealtimeInput (not batched)
-      // This avoids the "invalid argument" error from too many images at once
+      // Send photos asynchronously without blocking - let WebSocket handle flow
       for (const person of enrolledPeople) {
         if (person.photos && person.photos.length > 0) {
-          logger.info(`Sending photos for ${person.name} one at a time...`);
+          logger.info(`Sending photos for ${person.name}...`);
 
-          // Send only the first 2 photos to reduce API load (can be adjusted)
-          const photosToSend = person.photos.slice(0, 2);
+          // Send only first photo to reduce startup latency
+          const photosToSend = person.photos.slice(0, 1);
 
           for (let i = 0; i < photosToSend.length; i++) {
             const base64Data = photosToSend[i].replace(/^data:image\/\w+;base64,/, '');
 
-            // Send each photo individually via realtime input
-            await session.liveSession.sendRealtimeInput({
+            // Send non-blocking - don't await, let WebSocket buffer
+            const result = session.liveSession.sendRealtimeInput({
               media: {
                 data: base64Data,
                 mimeType: 'image/jpeg'
               }
             });
 
-            // Small delay between photos to avoid overwhelming the API
-            await new Promise(resolve => setTimeout(resolve, 200));
+            // Only add catch if result is a promise
+            if (result && typeof result.catch === 'function') {
+              result.catch(err => logger.error(`Photo send error: ${err.message}`));
+            }
           }
 
-          logger.info(`Sent ${photosToSend.length} reference photos for ${person.name}`);
+          logger.info(`Sent ${photosToSend.length} reference photo for ${person.name}`);
         }
       }
 
@@ -337,29 +338,29 @@ RESPONSE STYLE:
    */
   async sendVideoFrame(sessionId, imageData) {
     const session = this.activeSessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session ${sessionId} not found`);
+    if (!session || !session.liveSession) {
+      return; // Session not ready yet
     }
 
     try {
-      // Throttle to ~2 FPS (send every 500ms for faster updates)
-      const now = Date.now();
-      if (now - session.lastVideoTime < 500) {
-        return; // Skip this frame
-      }
-      session.lastVideoTime = now;
+      // NO THROTTLING - Let WebSocket handle backpressure naturally
       session.videoFrameCount++;
 
       // Remove data URI prefix if present
       const base64Data = imageData.replace(/^data:image\/\w+;base64,/, '');
 
-      // Send using sendRealtimeInput for native audio model (supports video too)
-      await session.liveSession.sendRealtimeInput({
+      // Send using sendRealtimeInput - this is async and non-blocking
+      const result = session.liveSession.sendRealtimeInput({
         media: {
           data: base64Data,
           mimeType: 'image/jpeg'
         }
       });
+
+      // Only add catch if result is a promise
+      if (result && typeof result.catch === 'function') {
+        result.catch(err => logger.error(`Video send error: ${err.message}`));
+      }
 
       // Send activation prompt AFTER first real video frame arrives
       if (session.videoFrameCount === 1 && session.enrollmentSent) {
@@ -390,24 +391,28 @@ RESPONSE STYLE:
    */
   async sendAudioChunk(sessionId, audioData) {
     const session = this.activeSessions.get(sessionId);
-    if (!session) {
-      throw new Error(`Session ${sessionId} not found`);
+    if (!session || !session.liveSession) {
+      return; // Session not ready yet
     }
 
     try {
       // Remove data URI prefix if present
       const base64Data = audioData.replace(/^data:audio\/\w+;base64,/, '');
 
-      // Send using sendRealtimeInput for native audio model
-      await session.liveSession.sendRealtimeInput({
+      // Send using sendRealtimeInput - non-blocking, let WebSocket handle flow
+      const result = session.liveSession.sendRealtimeInput({
         media: {
           data: base64Data,
           mimeType: 'audio/pcm;rate=16000'
         }
       });
+
+      // Only add catch if result is a promise
+      if (result && typeof result.catch === 'function') {
+        result.catch(err => logger.error(`Audio send error: ${err.message}`));
+      }
     } catch (error) {
       logger.error(`Error sending audio for ${sessionId}:`, error);
-      throw error;
     }
   }
 
