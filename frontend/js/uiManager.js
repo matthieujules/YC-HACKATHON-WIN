@@ -83,14 +83,37 @@ class UIManager {
   }
 
   showPersonInfo(data) {
+    // Show in old panel (if exists)
     const panel = document.getElementById('personInfo');
-    if (!panel) return;
+    if (panel) {
+      document.getElementById('detectedPersonName').textContent = data.name;
+      document.getElementById('detectedPersonWallet').textContent = data.wallet;
+      panel.style.display = 'block';
+    }
 
-    document.getElementById('detectedPersonName').textContent = data.name;
-    document.getElementById('detectedPersonWallet').textContent = data.wallet;
+    // Show in video overlay
+    this.showPersonOverlay(data.name, data.wallet);
 
-    panel.style.display = 'block';
     console.log('👤 Person detected: ' + data.name);
+  }
+
+  showPersonOverlay(name, wallet) {
+    const overlay = document.getElementById('personOverlay');
+    const nameEl = document.getElementById('overlayPersonName');
+    const walletEl = document.getElementById('overlayPersonWallet');
+
+    if (!overlay) return;
+
+    nameEl.textContent = name;
+    walletEl.textContent = wallet;
+    overlay.style.display = 'block';
+  }
+
+  hidePersonOverlay() {
+    const overlay = document.getElementById('personOverlay');
+    if (overlay) {
+      overlay.style.display = 'none';
+    }
   }
 
   hidePersonInfo() {
@@ -98,6 +121,7 @@ class UIManager {
     if (panel) {
       panel.style.display = 'none';
     }
+    this.hidePersonOverlay();
   }
 
   updateStatus(message) {
@@ -144,6 +168,7 @@ class UIManager {
     }
 
     this.hidePersonInfo();
+    this.hidePersonOverlay();
   }
 }
 

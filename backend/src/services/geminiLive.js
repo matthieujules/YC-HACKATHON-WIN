@@ -31,9 +31,12 @@ MISSION: Monitor video and audio streams to detect TWO confirmations for crypto 
    - MUST be stable for at least 2 seconds (you'll see multiple frames)
    - Confirm it's a proper handshake, not just hands near each other
 
-PERSON IDENTIFICATION (Optional but helpful):
-   - Describe the person you see
-   - This helps match them to enrolled users with wallet addresses
+PERSON IDENTIFICATION:
+   - I will provide you with reference photos of enrolled people
+   - Compare the person you see in the live video to these reference photos
+   - When you recognize someone, call identifyPerson() with their name and wallet
+   - If you see an enrolled person, call identifyPerson() once when first detected
+   - If the person is not enrolled or you can't identify them, do NOT call identifyPerson()
 
 CRITICAL RULES:
    - Call updateStatus() frequently with what you observe
@@ -233,6 +236,61 @@ RESPONSE STYLE:
       return session;
     } catch (error) {
       logger.error(`Error creating session ${sessionId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send enrolled people reference photos to Gemini
+   * @param {string} sessionId - Session ID
+   * @param {Array} enrolledPeople - Array of enrolled people with photos
+   */
+  async sendEnrolledPeople(sessionId, enrolledPeople) {
+    const session = this.activeSessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session ${sessionId} not found`);
+    }
+
+    if (!enrolledPeople || enrolledPeople.length === 0) {
+      logger.info(`No enrolled people to send for session ${sessionId}`);
+      return;
+    }
+
+    try {
+      logger.info(`Sending ${enrolledPeople.length} enrolled people to Gemini`);
+
+      // Send introduction message
+      const intro = `ENROLLED PEOPLE REFERENCE PHOTOS:\n\n${enrolledPeople.map(p =>
+        `- ${p.name} (Wallet: ${p.wallet}) - ${p.photoCount} photos`
+      ).join('\n')}\n\nI will now show you reference photos for each person. Compare these to the live video stream.`;
+
+      await session.chat.sendMessage(intro);
+
+      // Send each person's photos
+      for (const person of enrolledPeople) {
+        logger.info(`Sending ${person.photoCount} photos for ${person.name}`);
+
+        // Send person header
+        await session.chat.sendMessage(`Reference photos for ${person.name}:`);
+
+        // Send all photos for this person
+        for (let i = 0; i < person.photos.length; i++) {
+          const base64Data = person.photos[i].replace(/^data:image\/\w+;base64,/, '');
+
+          await session.chat.sendMessage([
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64Data
+              }
+            }
+          ]);
+        }
+      }
+
+      logger.info(`All enrolled people photos sent to session ${sessionId}`);
+    } catch (error) {
+      logger.error(`Error sending enrolled people to session ${sessionId}:`, error);
       throw error;
     }
   }

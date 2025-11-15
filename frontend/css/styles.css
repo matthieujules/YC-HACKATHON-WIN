@@ -536,6 +536,63 @@ footer {
     align-items: center;
     gap: 8px;
     font-size: 0.9rem;
+    z-index: 10;
+}
+
+/* Person Identification Overlay */
+.person-overlay {
+    position: absolute;
+    bottom: 15px;
+    left: 15px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 10;
+    min-width: 250px;
+    animation: slideInLeft 0.4s ease;
+}
+
+@keyframes slideInLeft {
+    from {
+        opacity: 0;
+        transform: translateX(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.person-overlay-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.person-name {
+    font-size: 1.3rem;
+    font-weight: 700;
+}
+
+.person-status {
+    font-size: 0.85rem;
+    opacity: 0.9;
+    background: rgba(255, 255, 255, 0.2);
+    padding: 3px 10px;
+    border-radius: 12px;
+}
+
+.person-overlay-wallet {
+    font-family: monospace;
+    font-size: 0.9rem;
+    opacity: 0.95;
+    background: rgba(255, 255, 255, 0.15);
+    padding: 6px 10px;
+    border-radius: 6px;
+    margin-top: 5px;
 }
 
 .status-dot {

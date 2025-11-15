@@ -2,7 +2,7 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../utils/logger');
 const geminiLive = require('../services/geminiLive');
 const cryptoService = require('../services/crypto');
-const db = require('../config/database');
+const jsonStorage = require('../services/jsonStorage');
 
 class StreamController {
   constructor() {
@@ -49,14 +49,12 @@ class StreamController {
   }
 
   /**
-   * Load enrolled people from database
+   * Load enrolled people from JSON storage
    */
   async loadEnrolledPeople(session) {
     try {
-      const result = await db.query(
-        'SELECT id, name, wallet_address, face_person_id FROM people ORDER BY created_at DESC'
-      );
-      session.enrolledPeople = result.rows;
+      const people = await jsonStorage.getAllPeople();
+      session.enrolledPeople = people;
       logger.info(`Loaded ${session.enrolledPeople.length} enrolled people for session ${session.sessionId}`);
     } catch (error) {
       logger.error('Error loading enrolled people:', error);
@@ -85,6 +83,12 @@ class StreamController {
             return await this.handleFunctionCall(socket, session, functionName, args);
           }
         );
+
+        // Send enrolled people reference photos to Gemini
+        if (session.enrolledPeople.length > 0) {
+          logger.info(`Sending ${session.enrolledPeople.length} enrolled people to Gemini`);
+          await geminiLive.sendEnrolledPeople(session.sessionId, session.enrolledPeople);
+        }
 
         socket.emit('stream:started', { sessionId: session.sessionId });
       } catch (error) {

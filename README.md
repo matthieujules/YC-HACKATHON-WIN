@@ -1,413 +1,167 @@
-# 🕶️ Ray-Ban Crypto Payments
+# Ray-Ban Crypto Payments
 
-> Handshake-activated crypto transactions using Ray-Ban smart glasses, powered by Gemini AI
+Smart glasses payment system using Gemini 2.0 Live API for multimodal detection (video + audio).
 
-## 🎯 Overview
+## How It Works
 
-Enable secure, hands-free crypto payments through **two confirmations**:
+### Overview
+1. **Enroll People**: Capture 3-5 photos + name + wallet address
+2. **Start Transaction Stream**: Video (1 FPS) + audio streams to Gemini AI
+3. **Gemini Detects TWO Confirmations**:
+   - ✅ **Verbal Agreement**: Hears both parties agree to amount (e.g., "I'll pay $20" + "Yes, deal!")
+   - ✅ **Handshake Gesture**: Sees hands shaking
+4. **When Both Met**: Transaction can be executed
 
-1. **🎤 Verbal Agreement** - AI listens for explicit payment confirmation
-2. **🤝 Handshake Gesture** - AI watches for physical handshake
+### Person Recognition
+- Enrolled photos stored with wallet address
+- During stream: Gemini receives current frame + enrolled photos
+- Gemini compares faces and returns match/no match
+- Stays consistent by continuous comparison every frame (1 FPS)
 
-When BOTH are detected simultaneously → Transaction executes automatically
-
----
-
-## ✨ Key Features
-
-- **Real-time Multimodal AI** - Gemini 2.0 Live API processes video + audio streams
-- **Person Recognition** - Matches faces to enrolled users with wallet addresses
-- **Verbal Confirmation** - Detects payment amount and agreement keywords
-- **Handshake Detection** - Identifies handshake gesture in video
-- **Blockchain Integration** - Executes Ethereum transactions via Web3
-- **Transaction History** - Full audit trail in PostgreSQL
-
----
-
-## 🏗️ Architecture
-
+### Data Flow
 ```
-Ray-Ban Glasses (Camera + Mic)
-         ↓
-    Browser WebSocket
-         ↓
-    Node.js Backend
-         ↓
-    Gemini Live API (Multimodal AI)
-    - Sees video @ 1 FPS
-    - Hears audio continuously
-    - Understands context
-    - Calls functions when conditions met
-         ↓
-    Blockchain Transaction
+Browser Camera/Mic
+  → Canvas.toDataURL (video @ 1 FPS) + ScriptProcessor (audio @ 16kHz)
+  → Base64 encode
+  → Socket.io WebSocket
+  → Backend Node.js Server
+  → Gemini 2.0 Live API
+  → Function calls back to server
+  → Socket.io emits to frontend
+  → UI updates (❌ → ✅)
 ```
 
-### Why Gemini Live API?
+## Architecture
 
-**Before:** Needed 3 separate APIs
-- Azure Face API (person recognition)
-- OpenAI Whisper (speech-to-text)
-- MediaPipe (handshake detection)
+### Backend (Node.js + Express + Socket.io)
+- **Port**: 3000
+- **Gemini Live API**: Handles video + audio simultaneously
+- **Function Calling**: Gemini calls predefined functions when conditions met:
+  - `identifyPerson(name, wallet)` - when face recognized
+  - `confirmVerbalAgreement(amount, quote)` - when verbal agreement heard
+  - `confirmHandshake(description)` - when handshake seen
+  - `updateStatus(message)` - real-time observations
 
-**After:** Single Gemini Live API does it all
-- Sees AND hears simultaneously
-- Understands context ("I see Alice shaking hands while agreeing to $20")
-- Function calling for direct transaction triggers
-- Lower latency, lower cost, simpler code
+**Files**:
+- `src/server.js` - Express + Socket.io setup
+- `src/services/geminiLive.js` - Gemini API integration
+- `src/controllers/streamController.js` - WebSocket event handling
+- `src/controllers/enrollmentController.js` - REST API for enrollment
 
----
+### Frontend (Vanilla JS)
+- **Port**: 8080
+- **No frameworks** - just HTML/CSS/JS
 
-## 🚀 Quick Start
+**Files**:
+- `index.html` - Two modes: Enrollment & Transaction
+- `js/app.js` - Main coordinator
+- `js/enrollmentManager.js` - Camera capture, photo enrollment
+- `js/streamManager.js` - Video/audio capture and streaming
+- `js/uiManager.js` - Updates confirmations (❌ → ✅)
+- `js/socketClient.js` - WebSocket connection
+- `js/config.js` - Backend URL
+- `css/styles.css` - Full styling
 
-### 1. Install
+## Quick Start
 
+### 1. Setup Backend
 ```bash
 cd backend
 npm install
-cp .env.example .env
-```
 
-### 2. Configure
+# Edit .env and add your Gemini API key:
+# GEMINI_API_KEY=your_actual_key_here
 
-Edit `backend/.env`:
-
-```env
-GEMINI_API_KEY=your_key_here
-DATABASE_URL=postgresql://localhost/rayban_payments
-WEB3_PROVIDER_URL=https://sepolia.infura.io/v3/your_key
-WALLET_PRIVATE_KEY=your_testnet_private_key
-```
-
-### 3. Database
-
-```bash
-createdb rayban_payments
-psql rayban_payments < database/schema.sql
-```
-
-### 4. Run
-
-```bash
-# Backend
-cd backend
 npm run dev
+```
+Server runs on **http://localhost:3000**
 
-# Frontend (new terminal)
+### 2. Setup Frontend
+```bash
 cd frontend
-python -m http.server 8080
+python3 -m http.server 8080
 ```
-
-Visit `http://localhost:8080`
-
----
-
-## 📖 Usage
-
-### Enroll People
-
-1. Go to **Enroll** tab
-2. Enter name, wallet address, and physical description
-3. Click **Save Person**
-
-Example:
-- **Name:** Alice
-- **Wallet:** 0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb0
-- **Description:** Woman with brown hair, green eyes, wearing glasses
-
-### Run Transaction
-
-1. Go to **Transaction** tab
-2. Click **Start Streaming**
-3. Allow camera/mic access
-
-Gemini monitors for:
-
-**Person:** "I see a woman with brown hair and glasses" → Matches "Alice"
-
-**Verbal:** "I'll pay you $20" → "Yes, deal!" → Confirmed ✅
-
-**Handshake:** Two hands come together → Stable for 2 seconds → Confirmed ✅
-
-**Both confirmed?** → Transaction panel appears → Click "Confirm & Send" → Done! 🎉
-
----
-
-## 🎯 How Gemini Works
-
-### System Instructions
-
-Gemini is given this mission:
-
-> "Monitor video and audio for 3 conditions:
-> 1. Person identification (match to enrolled descriptions)
-> 2. Verbal agreement (keywords: yes, deal, agreed, with $ amount)
-> 3. Handshake gesture (hands together, stable 2+ seconds)
->
-> When conditions 2 AND 3 are met simultaneously, call executeTransaction()"
-
-### Function Calling
-
-Gemini calls these functions:
-
-```javascript
-// Continuous updates
-updateStatus({ visual: "...", audio: "..." })
-
-// Person identified
-identifyPerson({ description: "...", confidence: 0.92 })
-
-// Agreement detected
-confirmVerbalAgreement({
-  agreed: true,
-  amount: 20,
-  quote: "Yes, I'll pay $20"
-})
-
-// Handshake detected
-confirmHandshake({
-  active: true,
-  duration: 2.5
-})
-
-// All conditions met!
-executeTransaction({
-  person: "Alice",
-  amount: 20,
-  verbal: "Yes, I'll pay $20",
-  handshake: true,
-  confidence: 0.95
-})
-```
-
-Backend receives these calls and:
-- Validates all conditions
-- Checks database for wallet address
-- Executes blockchain transaction
-- Stores in audit log
-
----
-
-## 📁 Project Structure
-
-```
-rayban-payments/
-├── backend/
-│   ├── src/
-│   │   ├── server.js                    # Express + Socket.io server
-│   │   ├── services/
-│   │   │   ├── geminiLive.js            # Gemini Live API client
-│   │   │   ├── crypto.js                # Web3 blockchain
-│   │   │   └── handshake.js             # (Backup handshake detection)
-│   │   ├── controllers/
-│   │   │   ├── streamController.js      # WebSocket handler
-│   │   │   ├── enrollmentController.js  # Person CRUD
-│   │   │   └── transactionController.js # Transaction API
-│   │   ├── config/
-│   │   │   └── database.js              # PostgreSQL connection
-│   │   └── utils/
-│   │       └── logger.js                # Winston logging
-│   └── package.json
-├── frontend/
-│   ├── index.html                       # Main UI
-│   ├── css/
-│   │   └── styles.css                   # Styling
-│   └── js/
-│       ├── app.js                       # Main app
-│       ├── socketClient.js              # WebSocket client
-│       ├── streamManager.js             # Media capture
-│       ├── enrollmentManager.js         # Enrollment UI
-│       └── uiManager.js                 # UI updates
-├── database/
-│   └── schema.sql                       # PostgreSQL schema
-├── docs/
-│   ├── ARCHITECTURE.md                  # Technical details
-│   ├── GEMINI_ARCHITECTURE.md           # Gemini integration
-│   └── TECHNICAL_PLAN.md                # Original plan
-├── SETUP.md                             # Setup guide
-└── README.md                            # This file
-```
-
----
-
-## 🔧 Tech Stack
-
-### Frontend
-- Vanilla JavaScript
-- Socket.io client
-- MediaStream API (camera/mic)
-- Modern CSS
-
-### Backend
-- Node.js + Express
-- Socket.io (WebSocket)
-- @google/generative-ai (Gemini SDK)
-- Web3.js (Ethereum)
-- PostgreSQL
-
-### AI
-- Gemini 2.0 Flash (multimodal)
-- Function calling
-- Real-time streaming
-
-### Blockchain
-- Ethereum (Sepolia testnet)
-- Web3.js
-- Infura/Alchemy
-
----
-
-## 📊 Demo Scenario
-
-**Characters:**
-- **You** (wearing Ray-Ban glasses with camera)
-- **Alice** (enrolled user, wallet: 0x742d...)
-
-**Conversation:**
-
-```
-You: "Hey Alice, I'll buy that book from you for $20. Deal?"
-Alice: "Yes, deal!"
-*You shake hands*
-
-[Gemini AI Processing...]
-✅ Person identified: Alice (0x742d...)
-✅ Verbal agreement: $20
-✅ Handshake: Confirmed
-
-[Transaction Executes]
-🎉 Sent 20 USDC to Alice
-Tx: 0xabc123...
-```
-
----
-
-## 🎨 UI Features
-
-### Enrollment Tab
-- Simple form (name, wallet, description)
-- List of enrolled people
-- Delete enrolled users
-
-### Transaction Tab
-- Live video feed
-- Real-time Gemini narration
-- Three detection cards:
-  - 👤 Person Recognition
-  - 🎤 Verbal Agreement
-  - 🤝 Handshake Detection
-- Transaction confirmation panel
-- Transaction result/hash display
-
----
-
-## 🔒 Security
-
-- **Testnet First:** Always test on Sepolia/Goerli
-- **User Confirmation:** Transaction panel requires manual click
-- **Confidence Thresholds:** Only execute if confidence > 70%
-- **Audit Trail:** All transactions logged in database
-- **Environment Variables:** API keys never committed
-- **Rate Limiting:** Prevent API abuse
-- **HTTPS Required:** For camera/mic access
-
----
-
-## 💰 Cost Estimate
-
-### Development
-- **FREE** (Gemini free tier + testnet ETH)
-
-### Production (100 transactions/month)
-- Gemini 2.0 Flash: ~$2-5
-- Ethereum gas: ~$50-200 (varies by network congestion)
-- Server: ~$5-10 (Railway/Render)
-- Database: ~$5 (or free tier)
-- **Total: ~$62-220/month**
-
----
-
-## 🐛 Troubleshooting
-
-### Camera not working
-- Use HTTPS or localhost
-- Check browser permissions (Chrome/Firefox recommended)
-
-### Gemini not detecting handshake
-- Ensure good lighting
-- Hold handshake stable for 2+ seconds
-- Remember: video processes at 1 FPS (be patient)
-
-### Person not recognized
-- Include distinctive features in description
-- Try "Woman with brown hair, green eyes, glasses"
-- Gemini matches by keywords in description
-
-### Transaction failed
-- Check testnet balance
-- Verify wallet address format (0x...)
-- Check `DATABASE_URL` connection
-
-See `SETUP.md` for full troubleshooting guide.
-
----
-
-## 📚 Documentation
-
-- **SETUP.md** - Complete setup instructions
-- **ARCHITECTURE.md** - Original architecture (Azure/Whisper/MediaPipe)
-- **GEMINI_ARCHITECTURE.md** - Gemini Live API integration details
-- **TECHNICAL_PLAN.md** - Initial technical planning
-
----
-
-## 🚧 Future Enhancements
-
-- [ ] Mobile app (React Native)
-- [ ] Multi-person transactions (split bills)
-- [ ] Voice commands ("Send $50 to Alice")
-- [ ] AR overlay on Ray-Ban display
-- [ ] Multiple blockchain support (Polygon, Solana)
-- [ ] Recurring payments
-- [ ] Transaction analytics dashboard
-- [ ] Fraud detection (voice stress analysis)
-
----
-
-## 🤝 Contributing
-
-This is a hackathon project, but contributions are welcome!
-
-1. Fork the repo
-2. Create feature branch (`git checkout -b feature/amazing`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing`)
-5. Open Pull Request
-
----
-
-## 📄 License
-
-MIT License - see LICENSE file
-
----
-
-## 🙏 Acknowledgments
-
-- **Google Gemini** - Incredible multimodal AI
-- **Web3.js** - Ethereum integration
-- **Socket.io** - Real-time communication
-- **PostgreSQL** - Reliable database
-
----
-
-## 📞 Support
-
-- **Gemini Docs:** https://ai.google.dev/gemini-api/docs/live
-- **Web3 Docs:** https://docs.web3js.org
-- **Issues:** https://github.com/your-repo/issues
-
----
-
-**Built with ❤️ for the hackathon**
-
-*Making crypto payments as easy as shaking hands*
+Frontend runs on **http://localhost:8080**
+
+### 3. Use the App
+1. Open http://localhost:8080
+2. **Enroll Mode**:
+   - Click "Start Camera"
+   - Capture 3-5 photos from different angles
+   - Enter name + wallet address (0x...)
+   - Click "Save Person"
+3. **Transaction Mode**:
+   - Switch to Transaction tab
+   - Click "Start Streaming"
+   - Gemini watches for:
+     - Face recognition (matches against enrolled photos)
+     - Verbal agreement between two parties
+     - Handshake gesture
+   - Watch the checkmarks turn green (❌ → ✅)
+
+## Current Status
+
+### ✅ Working
+- Frontend UI with camera enrollment
+- Transaction mode with confirmation checkboxes
+- Socket.io connection between frontend/backend
+- Backend server running
+- Gemini Live API integration code
+
+### ⚠️ Issues
+**PostgreSQL Not Installed**:
+- Error: `ECONNREFUSED` when trying to connect to PostgreSQL
+- Database configured at `postgresql://localhost:5432/rayban_payments`
+- Backend starts anyway (graceful degradation)
+- Enrolled people won't persist across restarts
+
+**Solutions**:
+1. Install PostgreSQL and run schema (production approach)
+2. Use JSON file storage (quick prototype)
+3. Use in-memory storage (testing only)
+
+### 🔧 TODO
+- Fix database (currently not installed)
+- Add actual Gemini API key to .env
+- Test full enrollment flow with camera
+- Test streaming with real Gemini API
+- Add crypto transaction execution (Web3.js integration)
+
+## Tech Stack
+- **Backend**: Node.js, Express, Socket.io, @google/generative-ai
+- **Frontend**: Vanilla JS, Socket.io-client, MediaStream API
+- **AI**: Gemini 2.0 Live API (multimodal video + audio)
+- **Database**: PostgreSQL (not yet set up)
+- **Blockchain**: Web3.js + Ethereum (future)
+
+## Database Issue Details
+
+**Problem**: PostgreSQL not running
+**Error**: `AggregateError [ECONNREFUSED]` at `pg-pool/index.js:45:11`
+
+**Why**: `.env` has `DATABASE_URL=postgresql://localhost:5432/rayban_payments` but PostgreSQL server not installed/running
+
+**Impact**:
+- Enrolled people not saved
+- App still runs (UI works)
+- Can test camera/streaming
+- Just can't persist data
+
+**Fix Options**:
+1. **Install PostgreSQL**:
+   ```bash
+   brew install postgresql@15
+   brew services start postgresql@15
+   createdb rayban_payments
+   psql rayban_payments < database/schema.sql
+   ```
+
+2. **Switch to JSON storage** (simpler for prototype):
+   - Modify `src/controllers/enrollmentController.js`
+   - Use `fs.writeFileSync('data/people.json')`
+   - No database needed
+
+3. **In-memory only** (testing):
+   - Just use arrays in Node.js
+   - Data lost on restart
+   - Simplest for quick demo

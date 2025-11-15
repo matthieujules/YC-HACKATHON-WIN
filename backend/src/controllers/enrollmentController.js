@@ -1,8 +1,7 @@
 const express = require('express');
 const router = express.Router();
-const db = require('../config/database');
+const jsonStorage = require('../services/jsonStorage');
 const logger = require('../utils/logger');
-const { v4: uuidv4 } = require('uuid');
 
 /**
  * Create a new person (enrollment)
@@ -10,53 +9,44 @@ const { v4: uuidv4 } = require('uuid');
  */
 router.post('/', async (req, res) => {
   try {
-    const { name, wallet_address, description, photos } = req.body;
+    const { name, wallet_address, photos } = req.body;
 
     // Validation
     if (!name || !wallet_address) {
       return res.status(400).json({
+        success: false,
         error: 'Name and wallet_address are required'
+      });
+    }
+
+    if (!photos || photos.length < 3) {
+      return res.status(400).json({
+        success: false,
+        error: 'At least 3 photos are required'
       });
     }
 
     // Validate wallet address format
     if (!/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
       return res.status(400).json({
+        success: false,
         error: 'Invalid wallet address format'
       });
     }
 
     // Check if wallet already exists
-    const existingWallet = await db.query(
-      'SELECT id FROM people WHERE wallet_address = $1',
-      [wallet_address]
-    );
+    const people = await jsonStorage.getAllPeople();
+    const existingWallet = people.find(p => p.wallet === wallet_address);
 
-    if (existingWallet.rows.length > 0) {
+    if (existingWallet) {
       return res.status(409).json({
+        success: false,
         error: 'Wallet address already enrolled'
       });
     }
 
-    // Generate a unique face_person_id
-    const facePersonId = `person_${uuidv4()}`;
-
-    // Store person description in metadata
-    const metadata = {
-      description: description || '',
-      photos: photos || [],
-      enrollmentDate: new Date().toISOString()
-    };
-
-    // Insert into database
-    const result = await db.query(
-      `INSERT INTO people (name, wallet_address, face_person_id, metadata)
-       VALUES ($1, $2, $3, $4)
-       RETURNING id, name, wallet_address, face_person_id, created_at`,
-      [name, wallet_address, facePersonId, JSON.stringify(metadata)]
-    );
-
-    const person = result.rows[0];
+    // Create person
+    const person = await jsonStorage.createPerson(name, wallet_address, photos);
 
     logger.info(`Person enrolled: ${name} (${wallet_address})`);
 
@@ -65,14 +55,15 @@ router.post('/', async (req, res) => {
       person: {
         id: person.id,
         name: person.name,
-        wallet: person.wallet_address,
-        facePersonId: person.face_person_id,
-        createdAt: person.created_at
+        wallet: person.wallet,
+        photoCount: person.photoCount,
+        createdAt: person.createdAt
       }
     });
   } catch (error) {
     logger.error('Error enrolling person:', error);
     res.status(500).json({
+      success: false,
       error: 'Failed to enroll person',
       message: error.message
     });
@@ -85,29 +76,23 @@ router.post('/', async (req, res) => {
  */
 router.get('/list', async (req, res) => {
   try {
-    const result = await db.query(
-      `SELECT id, name, wallet_address, face_person_id, created_at, metadata
-       FROM people
-       ORDER BY created_at DESC`
-    );
-
-    const people = result.rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      wallet: row.wallet_address,
-      facePersonId: row.face_person_id,
-      description: row.metadata?.description || '',
-      createdAt: row.created_at
-    }));
+    const people = await jsonStorage.getAllPeople();
 
     res.json({
       success: true,
       count: people.length,
-      people
+      people: people.map(p => ({
+        id: p.id,
+        name: p.name,
+        wallet: p.wallet,
+        photoCount: p.photoCount,
+        createdAt: p.createdAt
+      }))
     });
   } catch (error) {
     logger.error('Error listing people:', error);
     res.status(500).json({
+      success: false,
       error: 'Failed to list people',
       message: error.message
     });
@@ -121,117 +106,31 @@ router.get('/list', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
+    const person = await jsonStorage.getPersonById(id);
 
-    const result = await db.query(
-      `SELECT id, name, wallet_address, face_person_id, created_at, metadata
-       FROM people
-       WHERE id = $1`,
-      [id]
-    );
-
-    if (result.rows.length === 0) {
+    if (!person) {
       return res.status(404).json({
+        success: false,
         error: 'Person not found'
       });
     }
-
-    const person = result.rows[0];
 
     res.json({
       success: true,
       person: {
         id: person.id,
         name: person.name,
-        wallet: person.wallet_address,
-        facePersonId: person.face_person_id,
-        description: person.metadata?.description || '',
-        createdAt: person.created_at
+        wallet: person.wallet,
+        photos: person.photos,
+        photoCount: person.photoCount,
+        createdAt: person.createdAt
       }
     });
   } catch (error) {
     logger.error('Error getting person:', error);
     res.status(500).json({
+      success: false,
       error: 'Failed to get person',
-      message: error.message
-    });
-  }
-});
-
-/**
- * Update a person
- * PUT /api/enroll/:id
- */
-router.put('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { name, wallet_address, description } = req.body;
-
-    // Build update query dynamically
-    const updates = [];
-    const values = [];
-    let paramCount = 1;
-
-    if (name) {
-      updates.push(`name = $${paramCount++}`);
-      values.push(name);
-    }
-
-    if (wallet_address) {
-      // Validate wallet address
-      if (!/^0x[a-fA-F0-9]{40}$/.test(wallet_address)) {
-        return res.status(400).json({
-          error: 'Invalid wallet address format'
-        });
-      }
-      updates.push(`wallet_address = $${paramCount++}`);
-      values.push(wallet_address);
-    }
-
-    if (description) {
-      updates.push(`metadata = metadata || $${paramCount++}::jsonb`);
-      values.push(JSON.stringify({ description }));
-    }
-
-    if (updates.length === 0) {
-      return res.status(400).json({
-        error: 'No fields to update'
-      });
-    }
-
-    values.push(id);
-
-    const result = await db.query(
-      `UPDATE people
-       SET ${updates.join(', ')}, updated_at = NOW()
-       WHERE id = $${paramCount}
-       RETURNING id, name, wallet_address, face_person_id, created_at`,
-      values
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Person not found'
-      });
-    }
-
-    const person = result.rows[0];
-
-    logger.info(`Person updated: ${person.name}`);
-
-    res.json({
-      success: true,
-      person: {
-        id: person.id,
-        name: person.name,
-        wallet: person.wallet_address,
-        facePersonId: person.face_person_id,
-        createdAt: person.created_at
-      }
-    });
-  } catch (error) {
-    logger.error('Error updating person:', error);
-    res.status(500).json({
-      error: 'Failed to update person',
       message: error.message
     });
   }
@@ -245,26 +144,32 @@ router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
 
-    const result = await db.query(
-      'DELETE FROM people WHERE id = $1 RETURNING name',
-      [id]
-    );
-
-    if (result.rows.length === 0) {
+    const person = await jsonStorage.getPersonById(id);
+    if (!person) {
       return res.status(404).json({
+        success: false,
         error: 'Person not found'
       });
     }
 
-    logger.info(`Person deleted: ${result.rows[0].name}`);
+    const deleted = await jsonStorage.deletePerson(id);
 
-    res.json({
-      success: true,
-      message: 'Person deleted successfully'
-    });
+    if (deleted) {
+      logger.info(`Person deleted: ${person.name}`);
+      res.json({
+        success: true,
+        message: 'Person deleted successfully'
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: 'Person not found'
+      });
+    }
   } catch (error) {
     logger.error('Error deleting person:', error);
     res.status(500).json({
+      success: false,
       error: 'Failed to delete person',
       message: error.message
     });
