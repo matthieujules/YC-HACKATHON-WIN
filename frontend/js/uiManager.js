@@ -258,7 +258,39 @@ class UIManager {
 
     successPanel.appendChild(detailsDiv);
     successPanel.style.display = 'block';
-    successPanel.scrollIntoView({ behavior: 'smooth' });
+    // Removed scrollIntoView to keep focus on video screen
+
+    // Show payment confirmation popup
+    this.showPaymentPopup(result);
+  }
+
+  showPaymentPopup(result) {
+    const overlay = document.getElementById('paymentSuccessOverlay');
+    if (!overlay) return;
+
+    // Populate overlay with transaction details
+    document.getElementById('overlayAmount').textContent = `$${result.transaction.amount} USDC`;
+    document.getElementById('overlayRecipient').textContent = result.transaction.recipient;
+    document.getElementById('overlayStatus').textContent = result.transaction.status.charAt(0).toUpperCase() + result.transaction.status.slice(1);
+
+    // Show overlay on video
+    overlay.style.display = 'block';
+
+    // Play success sound (optional - browser may require user interaction first)
+    try {
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBzaM0fPTgjMGHm7A7+OZUQ0PU6Po8bJiHAY+ldv0xnEoBSuByO7cjTsKGmO58OScTxELTqPm771fGgU2jdXyzHwrBS1+xvHaj0EMFWO79OihUhMNTqPn8bVgGgY8k9r1xW4qBS+Dyu3bjzkMGWa+7+OaTQ4PWKXo8rhkGwc9lNn0xm8rBjCFy+7djz0LG2vA8OScTw0OUaro8bNfGQQ7k9jyyXkrBTCFyu3bkD0LGmq/8OWdTw0PU6Xo77NkGgQ8lNnzw3AqBDGEyuzckTwKGWq/8OSdUA0PU6Pn77FjGwQ6k9r0wm8qBTGEyu/clD0MGWm98OOdUA0PU6Tn77FlGwQ7k9r0wW8qBDCEyu/clD4MGGu/7+SdUQ0MVajm8LBiGgU6lNj0wXEpBC+Dye7alD4MGGi88OSdTw4MU6Xm77FjHAU5lNjywXEpBS+EyvDal0UNGGW87uGdUA4MU6Xm8LFiHAQ6lNj0wnAqBDCEyO7alD4MGWm98OOdUQ0NVajm8LBiGgU7k9r0w3ArBC+Dye7cl0cNFma77uGdUQ0NVKXm8LFjHAU8ldjyw3ErBS+Dye3bl0cOF2u+7eGdUA4NVKXl8LJiGgU8lNn0wnArBS+Dye7cl0cOFmm97uCdUA4NVKXl8LJiGgY8lNn0wm8rBTCEyO7dlEUOFmm+7eGdUQ0NVKXl8LNiGwY8lNnzwnApBi+Dye/clEQPGGu+7uOdUA4MU6bl8LNjGwU8lNn0wXAqBDCEyO7dlUUOFmm/7uOdUA0MUqfm77NiHAU6k9r0wXEoBDCDye/dlEQOGGm+7uKdUA0MVKXm77NjGgU7lNjzwXEqBTCEyO3dlUUOFmm/7uOdUA0MUqfm8LJiGwU8lNn0wnAqBTCEyO7dlEUOFmm/7uOdUA4NU6Xo8LNiGwU8lNjzwnAqBTCEyO/dl0UOGGW+7+OdUA4MU6Xm77NjGgU8lNr0wnArBTCEye7dl0YOF2m/7uOdUA0NU6Xm8LNjGwU8lNnzwnArBTCEyO7dlUUOF2m/7uOdUA4MU6Xn8LNjGgU8lNnzwnEqBTCEye7dl0YOGGa+7+KdUA0NU6Xm8LNjGwU7lNnzwnArBTCEyO7clUUOGGm/7+OdUA0NVKXm8LNiGgU8lNr0wnArBTCEyO7clkYOF2m+7+KdUA0NU6Xn8LNjGgU7lNnzw3AqBi+EyO7dlUUOF2m/7+OdUA4NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOF2m+7+OdUA0MU6Xn8LNjGwU8lNnzwnArBTCEyO7clkYOF2m/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOGGm/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOGGm/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOGGm/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOGGm/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOGGm/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOGGm/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7dlkYOGGm/7+OdUA0NVKXm8LJjGgU8lNr0wnArBTCEyO7d');
+      audio.volume = 0.3;
+      audio.play().catch(() => {/* Ignore if autoplay blocked */});
+    } catch (e) {
+      // Ignore audio errors
+    }
+  }
+
+  hidePaymentPopup() {
+    const overlay = document.getElementById('paymentSuccessOverlay');
+    if (overlay) {
+      overlay.style.display = 'none';
+    }
   }
 }
 

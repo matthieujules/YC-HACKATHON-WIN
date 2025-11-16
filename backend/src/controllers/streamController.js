@@ -29,8 +29,7 @@ class StreamController {
         amount: null,
         handshakeActive: false,
         readyForTransaction: false
-      },
-      transactionExecuted: false
+      }
     };
 
     this.activeSessions.set(socket.id, session);
@@ -355,12 +354,6 @@ class StreamController {
       return { error: 'Handshake required' };
     }
 
-    if (session.transactionExecuted) {
-      logger.warn('Transaction blocked: Already executed');
-      socket.emit('transaction:blocked', { reason: 'Transaction already executed' });
-      return { error: 'Transaction already executed for this session' };
-    }
-
     if (overall_confidence < 0.7) {
       logger.warn('Transaction blocked: Low confidence');
       socket.emit('transaction:blocked', { reason: 'Confidence too low' });
@@ -387,9 +380,6 @@ class StreamController {
 
     logger.info(`Transaction ready for ${session.currentState.personData.name}: $${amount}`);
 
-    // Mark as executed to prevent duplicate transactions
-    session.transactionExecuted = true;
-
     return {
       success: true,
       message: 'Transaction prepared and ready for user confirmation',
@@ -408,7 +398,7 @@ class StreamController {
 
     session.currentState.readyForTransaction = ready;
 
-    if (ready && !session.transactionExecuted) {
+    if (ready) {
       socket.emit('transaction:conditions-met', {
         person: session.currentState.personData,
         amount: session.currentState.amount

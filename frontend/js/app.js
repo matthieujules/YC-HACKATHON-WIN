@@ -142,5 +142,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }, 2000);
 
+  // Payment overlay close button
+  const closePaymentOverlayBtn = document.getElementById('closePaymentOverlay');
+  closePaymentOverlayBtn?.addEventListener('click', () => {
+    uiManager.hidePaymentPopup();
+  });
+
   console.log('✅ App initialized');
 });

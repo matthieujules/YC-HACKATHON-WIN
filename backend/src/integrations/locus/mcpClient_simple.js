@@ -1,9 +1,8 @@
 /**
  * Locus MCP Client - Simplified for Direct Tool Calling
- * Uses @locus-technologies/langchain-mcp-m2m
+ * Uses @locus-technologies/langchain-mcp-m2m with dynamic import for ES modules
  */
 
-const { MCPClientCredentials } = require('@locus-technologies/langchain-mcp-m2m');
 const logger = require('../../utils/logger');
 
 class LocusMCPClientSimple {
@@ -15,9 +14,28 @@ class LocusMCPClientSimple {
     this.client = null;
     this.tools = null;
     this.isInitialized = false;
+    this.MCPClientCredentials = null; // Will be loaded dynamically
 
     logger.info('Locus MCP Client (Simple) initialized');
     logger.info(`MCP Server: ${this.mcpServerUrl}`);
+  }
+
+  /**
+   * Load the ES module dynamically
+   */
+  async _loadModule() {
+    if (this.MCPClientCredentials) {
+      return;
+    }
+
+    try {
+      const module = await import('@locus-technologies/langchain-mcp-m2m');
+      this.MCPClientCredentials = module.MCPClientCredentials;
+      logger.info('Locus MCP module loaded successfully');
+    } catch (error) {
+      logger.error('Failed to load Locus MCP module:', error.message);
+      throw new Error(`Failed to load @locus-technologies/langchain-mcp-m2m: ${error.message}`);
+    }
   }
 
   /**
@@ -31,8 +49,11 @@ class LocusMCPClientSimple {
     logger.info('Initializing Locus MCP connection...');
 
     try {
+      // Load the ES module first
+      await this._loadModule();
+
       // Create MCP client with OAuth credentials
-      this.client = new MCPClientCredentials({
+      this.client = new this.MCPClientCredentials({
         mcpServers: {
           'locus': {
             url: this.mcpServerUrl,

@@ -100,6 +100,29 @@
                                 <p id="handshakeOverlayText">Handshake detected</p>
                             </div>
                         </div>
+
+                        <!-- Payment Success Overlay (center) -->
+                        <div id="paymentSuccessOverlay" class="payment-success-overlay" style="display: none;">
+                            <div class="payment-success-content">
+                                <div class="payment-success-icon">💸</div>
+                                <h2 class="payment-success-title">Payment Confirmed!</h2>
+                                <div class="payment-success-details">
+                                    <div class="payment-detail-row">
+                                        <span class="detail-label">Amount:</span>
+                                        <span class="detail-value" id="overlayAmount">$0.00 USDC</span>
+                                    </div>
+                                    <div class="payment-detail-row">
+                                        <span class="detail-label">To:</span>
+                                        <span class="detail-value" id="overlayRecipient">-</span>
+                                    </div>
+                                    <div class="payment-detail-row">
+                                        <span class="detail-label">Status:</span>
+                                        <span class="detail-value success" id="overlayStatus">Success</span>
+                                    </div>
+                                </div>
+                                <button id="closePaymentOverlay" class="payment-overlay-close-btn">✓ Close</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
