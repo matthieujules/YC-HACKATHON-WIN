@@ -6,15 +6,20 @@ class CryptoService {
     this.web3 = new Web3(process.env.WEB3_PROVIDER_URL || 'https://sepolia.infura.io/v3/your_key');
     this.walletPrivateKey = process.env.WALLET_PRIVATE_KEY;
 
-    if (!this.walletPrivateKey) {
-      logger.warn('Wallet private key not configured - transactions will not work');
+    if (!this.walletPrivateKey || this.walletPrivateKey === 'your_wallet_private_key_for_signing') {
+      logger.warn('Wallet private key not configured or invalid - Web3 transactions will not work (using Locus for payments)');
+      this.account = null;
+      return;
     }
 
-    // Add wallet account if private key is available
-    if (this.walletPrivateKey) {
+    // Add wallet account if private key is available and valid
+    try {
       this.account = this.web3.eth.accounts.privateKeyToAccount(this.walletPrivateKey);
       this.web3.eth.accounts.wallet.add(this.account);
-      logger.info(`Wallet configured: ${this.account.address}`);
+      logger.info(`Web3 Wallet configured: ${this.account.address}`);
+    } catch (error) {
+      logger.warn(`Web3 wallet private key not configured or invalid - Web3 transactions will not work (using Locus for payments)`);
+      this.account = null;
     }
   }
 

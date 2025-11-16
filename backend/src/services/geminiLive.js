@@ -18,12 +18,19 @@ class GeminiLiveService {
 
 MISSION: Monitor video and audio streams to detect TWO confirmations for crypto transactions:
 
+PAYMENT LIMITS:
+   - MAXIMUM transaction: $0.10 USDC
+   - MINIMUM transaction: $0.01 USDC
+   - If you hear an amount outside this range, DO NOT proceed with the transaction
+   - Inform the users that the amount must be between $0.01 and $0.10
+
 1. VERBAL CONFIRMATION
-   - Listen for payment amount ("$20", "twenty dollars", etc.)
+   - Listen for payment amount ("$0.05", "five cents", "10 cents", etc.)
+   - Amount MUST be between $0.01 and $0.10
    - Listen for CLEAR agreement from BOTH parties
    - Keywords: "yes", "deal", "agreed", "okay", "sure", "I agree"
    - MUST hear explicit confirmation of the amount
-   - Example: "I'll pay you $20" → "Yes, deal!"
+   - Example: "I'll pay you $0.05" → "Yes, deal!"
 
 2. HANDSHAKE CONFIRMATION
    - Watch for two hands coming together in handshake position

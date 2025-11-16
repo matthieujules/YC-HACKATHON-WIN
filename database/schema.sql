@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE TABLE people (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name VARCHAR(255) NOT NULL,
-  wallet_address VARCHAR(255) NOT NULL UNIQUE,
+  wallet_address VARCHAR(255) NOT NULL,  -- REMOVED UNIQUE constraint - multiple people can share wallets
   face_person_id VARCHAR(255) UNIQUE,  -- Azure Face API Person ID
   email VARCHAR(255),
   phone VARCHAR(50),
@@ -16,7 +16,7 @@ CREATE TABLE people (
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
--- Create index for fast wallet lookups
+-- Create index for fast wallet lookups (still useful for queries)
 CREATE INDEX idx_people_wallet ON people(wallet_address);
 CREATE INDEX idx_people_face_id ON people(face_person_id);
 

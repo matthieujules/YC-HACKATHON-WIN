@@ -34,16 +34,8 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Check if wallet already exists
-    const people = await jsonStorage.getAllPeople();
-    const existingWallet = people.find(p => p.wallet === wallet_address);
-
-    if (existingWallet) {
-      return res.status(409).json({
-        success: false,
-        error: 'Wallet address already enrolled'
-      });
-    }
+    // REMOVED wallet uniqueness check - multiple people can share the same wallet
+    // This allows for testing, family accounts, or same person with different photos
 
     // Create person
     const person = await jsonStorage.createPerson(name, wallet_address, photos);

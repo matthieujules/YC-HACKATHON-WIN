@@ -2,7 +2,15 @@ const express = require('express');
 const router = express.Router();
 const db = require('../config/database');
 const cryptoService = require('../services/crypto');
+const locus = require('../integrations/locus');
 const logger = require('../utils/logger');
+
+// Payment method configuration
+const PAYMENT_METHOD = process.env.PAYMENT_METHOD || 'locus'; // 'locus' or 'crypto'
+
+// Safety limits
+const MAX_TRANSACTION_AMOUNT = 0.10; // Maximum $0.10 USDC per transaction
+const MIN_TRANSACTION_AMOUNT = 0.01; // Minimum $0.01 USDC per transaction
 
 /**
  * Execute a crypto transaction
@@ -13,6 +21,8 @@ router.post('/execute', async (req, res) => {
     const {
       sessionId,
       to_person_id,
+      to_wallet,
+      to_name,
       amount,
       from_wallet,
       verbal_confirmation,
@@ -20,39 +30,105 @@ router.post('/execute', async (req, res) => {
       confidence
     } = req.body;
 
-    // Validation
-    if (!to_person_id || !amount) {
+    // Validation - we need either person_id OR wallet address
+    if (!amount) {
       return res.status(400).json({
-        error: 'to_person_id and amount are required'
+        error: 'amount is required'
       });
     }
 
-    // Get recipient details
-    const personResult = await db.query(
-      'SELECT name, wallet_address FROM people WHERE id = $1',
-      [to_person_id]
-    );
-
-    if (personResult.rows.length === 0) {
-      return res.status(404).json({
-        error: 'Recipient not found'
+    if (!to_wallet && !to_person_id) {
+      return res.status(400).json({
+        error: 'Either to_wallet or to_person_id is required'
       });
     }
 
-    const recipient = personResult.rows[0];
+    // Safety check: Maximum transaction amount
+    if (amount > MAX_TRANSACTION_AMOUNT) {
+      logger.warn(`Transaction blocked: Amount $${amount} exceeds maximum of $${MAX_TRANSACTION_AMOUNT}`);
+      return res.status(400).json({
+        error: `Transaction amount $${amount} exceeds maximum allowed amount of $${MAX_TRANSACTION_AMOUNT}`,
+        maxAmount: MAX_TRANSACTION_AMOUNT,
+        requestedAmount: amount
+      });
+    }
 
-    // Execute crypto transaction
-    logger.info(`Executing transaction: ${amount} ETH to ${recipient.name} (${recipient.wallet_address})`);
+    // Safety check: Minimum transaction amount
+    if (amount < MIN_TRANSACTION_AMOUNT) {
+      logger.warn(`Transaction blocked: Amount $${amount} below minimum of $${MIN_TRANSACTION_AMOUNT}`);
+      return res.status(400).json({
+        error: `Transaction amount $${amount} is below minimum allowed amount of $${MIN_TRANSACTION_AMOUNT}`,
+        minAmount: MIN_TRANSACTION_AMOUNT,
+        requestedAmount: amount
+      });
+    }
 
-    const txResult = await cryptoService.sendTransaction(
-      recipient.wallet_address,
-      amount,
-      {
-        sessionId,
-        recipient: recipient.name,
-        verbalConfirmation: verbal_confirmation
+    // Get recipient details directly from the request
+    // Gemini has already verified the person via facial recognition
+    const recipient = {
+      name: to_name || 'Unknown',
+      wallet_address: to_wallet
+    };
+
+    // Validate we have a wallet address
+    if (!recipient.wallet_address) {
+      return res.status(400).json({
+        error: 'Recipient wallet address is required'
+      });
+    }
+
+    logger.info(`Payment to ${recipient.name} at ${recipient.wallet_address}`);
+
+    // Execute payment using configured method (Locus or Crypto)
+    let txResult;
+    let paymentMethod = PAYMENT_METHOD;
+    let currency = 'USDC';
+
+    logger.info(`Executing ${paymentMethod.toUpperCase()} transaction: ${amount} ${currency} to ${recipient.name} (${recipient.wallet_address})`);
+
+    if (paymentMethod === 'locus') {
+      // Use Locus payment (MCP)
+      try {
+        txResult = await locus.sendPayment(
+          recipient.wallet_address,
+          amount,
+          {
+            sessionId,
+            recipientName: recipient.name,
+            verbalConfirmation: verbal_confirmation,
+            handshakeConfirmed: handshake_confirmed,
+            faceConfidence: confidence
+          }
+        );
+        logger.info('Locus payment successful');
+      } catch (error) {
+        logger.error('Locus payment failed:', error.message);
+        // Fallback to crypto if Locus fails
+        paymentMethod = 'crypto';
+        currency = 'ETH';
+        txResult = await cryptoService.sendTransaction(
+          recipient.wallet_address,
+          amount,
+          {
+            sessionId,
+            recipient: recipient.name,
+            verbalConfirmation: verbal_confirmation
+          }
+        );
       }
-    );
+    } else {
+      // Use Web3 ETH
+      currency = 'ETH';
+      txResult = await cryptoService.sendTransaction(
+        recipient.wallet_address,
+        amount,
+        {
+          sessionId,
+          recipient: recipient.name,
+          verbalConfirmation: verbal_confirmation
+        }
+      );
+    }
 
     // Store transaction in database
     const dbResult = await db.query(
@@ -66,19 +142,22 @@ router.post('/execute', async (req, res) => {
       RETURNING id, tx_hash, created_at`,
       [
         sessionId,
-        from_wallet || txResult.from,
-        to_person_id,
+        from_wallet || txResult.from || process.env.LOCUS_WALLET_ADDRESS,
+        null,  // to_person_id - not using PostgreSQL database for person lookup
         recipient.wallet_address,
         amount,
-        'ETH',
+        currency,
         txResult.txHash,
-        'pending',
+        txResult.status || 'pending',
         confidence || 0,
         verbal_confirmation || '',
         JSON.stringify({
+          recipientName: recipient.name,
           handshakeConfirmed: handshake_confirmed,
           blockNumber: txResult.blockNumber,
-          gasUsed: txResult.gasUsed
+          gasUsed: txResult.gasUsed,
+          paymentMethod: paymentMethod,
+          locusTransactionId: txResult.locusTransactionId
         })
       ]
     );
@@ -89,13 +168,16 @@ router.post('/execute', async (req, res) => {
 
     res.status(201).json({
       success: true,
+      paymentMethod: paymentMethod,
       transaction: {
         id: transaction.id,
         txHash: transaction.tx_hash,
+        locusTransactionId: txResult.locusTransactionId,
         recipient: recipient.name,
         wallet: recipient.wallet_address,
         amount: amount,
-        status: 'pending',
+        currency: currency,
+        status: txResult.status || 'pending',
         createdAt: transaction.created_at
       },
       blockchain: txResult

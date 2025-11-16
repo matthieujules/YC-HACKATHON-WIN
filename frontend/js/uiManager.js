@@ -232,6 +232,34 @@ class UIManager {
     this.hidePersonInfo();
     this.hidePersonOverlay();
   }
+
+  showTransactionSuccess(result) {
+    // Update success panel with transaction details
+    const successPanel = document.getElementById('successPanel');
+    if (!successPanel) return;
+
+    // Add transaction details to success panel
+    const existingDetails = successPanel.querySelector('.transaction-details');
+    if (existingDetails) {
+      existingDetails.remove();
+    }
+
+    const detailsDiv = document.createElement('div');
+    detailsDiv.className = 'transaction-details';
+    detailsDiv.style.cssText = 'margin-top: 16px; padding: 12px; background: rgba(76, 175, 80, 0.1); border-radius: 8px; font-size: 0.9em;';
+    detailsDiv.innerHTML = `
+      <div style="margin-bottom: 8px;"><strong>💰 Amount:</strong> ${result.transaction.amount} USDC</div>
+      <div style="margin-bottom: 8px;"><strong>👤 Recipient:</strong> ${result.transaction.recipient}</div>
+      <div style="margin-bottom: 8px;"><strong>💳 Wallet:</strong> ${result.transaction.wallet.substring(0, 10)}...${result.transaction.wallet.slice(-8)}</div>
+      <div style="margin-bottom: 8px;"><strong>🔗 Method:</strong> ${result.paymentMethod === 'locus' ? 'Locus MCP (USDC on Base)' : result.paymentMethod.toUpperCase()}</div>
+      <div style="margin-bottom: 8px;"><strong>🆔 Transaction ID:</strong> ${result.transaction.id}</div>
+      <div style="margin-bottom: 8px;"><strong>📅 Status:</strong> ${result.transaction.status}</div>
+    `;
+
+    successPanel.appendChild(detailsDiv);
+    successPanel.style.display = 'block';
+    successPanel.scrollIntoView({ behavior: 'smooth' });
+  }
 }
 
 const uiManager = new UIManager();

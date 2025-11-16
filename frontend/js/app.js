@@ -27,6 +27,60 @@ document.addEventListener('DOMContentLoaded', async () => {
     uiManager.updateHandshakeConfirmation(data);
   };
 
+  // AUTOMATIC PAYMENT EXECUTION: When Gemini confirms both handshake + verbal agreement
+  socketClient.onTransactionReady = async (data) => {
+    console.log('💰 Transaction ready - Executing payment via Locus MCP...', data);
+
+    try {
+      // Show processing status
+      uiManager.updateStatus('💰 Executing payment via Locus...');
+      uiManager.updateGeminiMessage('🚀 Initiating USDC payment on Base via Locus MCP...');
+
+      // Call the transaction execution API
+      console.log('💰 PAYMENT REQUEST DATA:', {
+        recipient: data.recipient,
+        wallet: data.recipient.wallet,
+        name: data.recipient.name
+      });
+
+      const response = await fetch(`${CONFIG.BACKEND_URL}/api/transaction/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          to_person_id: data.recipient.id,
+          to_wallet: data.recipient.wallet,
+          to_name: data.recipient.name,
+          amount: data.amount,
+          verbal_confirmation: data.verbalQuote,
+          handshake_confirmed: true,
+          confidence: data.confidence,
+          session_id: data.sessionId
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        console.log('✅ Payment executed successfully!', result);
+        uiManager.updateStatus(`✅ Payment sent! ${result.transaction.amount} USDC to ${result.transaction.recipient}`);
+        uiManager.updateGeminiMessage(`✅ Payment Complete!\nAmount: ${result.transaction.amount} USDC\nTo: ${result.transaction.recipient}\nWallet: ${result.transaction.wallet}\nMethod: Locus MCP\nTransaction ID: ${result.transaction.id}`);
+
+        // Show success panel with transaction details
+        uiManager.showTransactionSuccess(result);
+      } else {
+        console.error('❌ Payment failed:', result);
+        uiManager.updateStatus('❌ Payment failed: ' + (result.error || 'Unknown error'));
+        uiManager.updateGeminiMessage('❌ Payment failed: ' + (result.error || 'Unknown error'));
+      }
+    } catch (error) {
+      console.error('❌ Error executing payment:', error);
+      uiManager.updateStatus('❌ Error executing payment: ' + error.message);
+      uiManager.updateGeminiMessage('❌ Payment error: ' + error.message);
+    }
+  };
+
   // Initialize enrollment manager
   enrollmentManager.initialize();
   await enrollmentManager.loadEnrolledPeople();
